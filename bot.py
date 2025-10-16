@@ -33,6 +33,9 @@ if not BOT_TOKEN:
 # Инициализация бота
 bot = AsyncTeleBot(BOT_TOKEN)
 
+# --- Глобальная переменная для заглушки ---
+DEFAULT_PLACEHOLDER_PATH = None
+
 # --- Управление опубликованными новостями ---
 def load_posted_news():
     """Загрузка списка опубликованных новостей"""
@@ -165,6 +168,18 @@ def generate_beautiful_placeholder():
     except Exception as e:
         print(f"⚠️ Критическая ошибка создания заглушки: {e}")
         return None
+
+def initialize_placeholder():
+    """Инициализация заглушки при запуске"""
+    global DEFAULT_PLACEHOLDER_PATH
+    try:
+        DEFAULT_PLACEHOLDER_PATH = generate_beautiful_placeholder()
+        if DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH):
+            print("✅ Заглушка инициализирована при запуске")
+        else:
+            print("❌ Не удалось создать заглушку при запуске")
+    except Exception as e:
+        print(f"❌ Ошибка инициализации заглушки: {e}")
 
 # --- Улучшенный парсинг для законченных новостей ---
 def extract_complete_text_from_html(html_content, title):
@@ -561,7 +576,7 @@ async def prepare_news_item(item):
     # Форматируем в стиле Live Питер
     final_text = format_news_live_piter_style(title, description, news_text)
     
-    # Проверяем минимальную длину
+    # Проверяем минимальную длину - ВОССТАНАВЛИВАЕМ ФИЛЬТРАЦИЮ
     word_count = len(final_text.split())
     if word_count < 40:  # Минимум 40 слов для законченной новости
         print(f"❌ Пропущена новость: '{title[:30]}...' - недостаточно текста ({word_count} слов)")
@@ -577,13 +592,18 @@ async def prepare_news_item(item):
             if image_path:
                 print("✅ Используем изображение из новости")
     
-    # Используем сгенерированную заглушку
+    # Используем сгенерированную заглушку - УЛУЧШЕННАЯ ЛОГИКА
     if not image_path:
-        image_path = generate_beautiful_placeholder()
-        if image_path:
-            print("✅ Используем сгенерированную заглушку")
+        if DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH):
+            image_path = DEFAULT_PLACEHOLDER_PATH
+            print("✅ Используем заглушку, созданную при запуске")
         else:
-            print("⚠️ Не удалось создать заглушку")
+            # Пытаемся создать заглушку на лету
+            image_path = generate_beautiful_placeholder()
+            if image_path:
+                print("✅ Используем свежесозданную заглушку")
+            else:
+                print("⚠️ Не удалось создать заглушку")
     
     return {
         'title': title,
@@ -822,6 +842,9 @@ async def main():
     print(f"📺 Канал: {CHANNEL_ID}")
     print(f"🌐 Порт: {PORT}")
     print("🔧 Версия: с keep-alive для Render")
+    
+    # Инициализируем заглушку при запуске
+    initialize_placeholder()
     
     # Запускаем HTTP сервер для здоровья
     health_runner = await health_server()
