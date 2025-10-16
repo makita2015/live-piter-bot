@@ -14,6 +14,10 @@ from bs4 import BeautifulSoup
 from telebot.async_telebot import AsyncTeleBot
 from dotenv import load_dotenv
 
+# Проверка и создание необходимых папок
+os.makedirs('./static', exist_ok=True)
+print(f"📁 Папка static создана/проверена")
+
 # Загрузка переменных окружения
 load_dotenv()
 
@@ -109,93 +113,58 @@ async def keep_alive_ping():
 
 # --- Функция генерации красивой заглушки для Live Питер 📸 ---
 def generate_beautiful_placeholder():
-    """Генерация заглушки в стиле реальных новостных каналов"""
+    """Генерация надежной заглушки"""
     try:
         from PIL import Image, ImageDraw, ImageFont
         
-        width, height = 800, 600
-        # Создаем фон в стиле новостных каналов (темно-синий с градиентом)
-        img = Image.new('RGB', (width, height), color='#0a1931')
+        # Создаем простое изображение
+        img = Image.new('RGB', (800, 600), color='#0a1931')
         draw = ImageDraw.Draw(img)
         
-        # Градиентный фон
-        for i in range(height):
-            r = int(10 + (i / height) * 20)
-            g = int(25 + (i / height) * 30)
-            b = int(49 + (i / height) * 40)
-            draw.line([(0, i), (width, i)], fill=(r, g, b))
+        # Красные полосы
+        draw.rectangle([0, 0, 800, 80], fill='#8B0000')
+        draw.rectangle([0, 520, 800, 600], fill='#8B0000')
         
-        # Верхняя панель - градиентный красный
-        for i in range(80):
-            red_value = int(139 + (i / 80) * 116)  # От темно-красного к ярко-красному
-            draw.line([(0, i), (width, i)], fill=(red_value, 0, 0))
+        # Золотая рамка
+        draw.rectangle([50, 100, 750, 500], outline='#d4af37', width=4)
         
-        # Нижняя панель - градиентный красный
-        for i in range(height-80, height):
-            red_value = int(139 + ((i - (height-80)) / 80) * 116)  # От темно-красного к ярко-красному
-            draw.line([(0, i), (width, i)], fill=(red_value, 0, 0))
-        
-        # Элементы "экранов" как в новостной студии
-        draw.rectangle([50, 100, width-50, height-100], outline='#d4af37', width=3)
-        
-        # Текст бегущей строки
+        # Текст
         try:
-            font_news = ImageFont.truetype("arial.ttf", 22)
-            font_large = ImageFont.truetype("arial.ttf", 52)
-            font_medium = ImageFont.truetype("arial.ttf", 28)
+            # Пробуем разные шрифты
+            try:
+                font_large = ImageFont.truetype("arial.ttf", 48)
+                font_medium = ImageFont.truetype("arial.ttf", 24)
+            except:
+                try:
+                    font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 48)
+                    font_medium = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
+                except:
+                    font_large = ImageFont.load_default()
+                    font_medium = ImageFont.load_default()
         except:
-            font_news = ImageFont.load_default()
             font_large = ImageFont.load_default()
             font_medium = ImageFont.load_default()
         
-        # Бегущая строка - размещаем по центру нижней красной полосы
-        news_text = "САНКТ-ПЕТЕРБУРГ • АКТУАЛЬНЫЕ НОВОСТИ • САНКТ-ПЕТЕРБУРГ • АКТУАЛЬНЫЕ НОВОСТИ"
-        text_y_position = height - 40  # По центру нижней полосы
-        draw.text((10, text_y_position), news_text, fill='#ffffff', font=font_news)
-        
         # Основной текст
-        draw.text((width//2, height//2 - 40), "Live Питер", fill='#ffffff', 
-                 font=font_large, anchor='mm', stroke_width=2, stroke_fill='#000000')
-        draw.text((width//2, height//2 + 20), "НОВОСТНОЙ КАНАЛ", fill='#d4af37', 
-                 font=font_medium, anchor='mm')
+        draw.text((400, 280), "Live Питер", fill='#ffffff', font=font_large, anchor='mm')
+        draw.text((400, 340), "НОВОСТНОЙ КАНАЛ", fill='#d4af37', font=font_medium, anchor='mm')
         
-        # Дополнительные элементы как в новостной графике
-        draw.rectangle([width//2 - 150, height//2 + 60, width//2 - 50, height//2 + 65], fill='#d4af37')
-        draw.rectangle([width//2 + 50, height//2 + 60, width//2 + 150, height//2 + 65], fill='#d4af37')
+        # Бегущая строка
+        news_text = "САНКТ-ПЕТЕРБУРГ • АКТУАЛЬНЫЕ НОВОСТИ"
+        draw.text((400, 560), news_text, fill='#ffffff', font=font_medium, anchor='mm')
         
-        # Логотип в левом верхнем углу (упрощенный)
-        draw.rectangle([20, 20, 60, 60], fill='#ffffff', outline='#8B0000', width=2)
-        draw.text((40, 40), "LP", fill='#8B0000', font=font_medium, anchor='mm')
-        
-        # Сохраняем изображение
-        os.makedirs('./static', exist_ok=True)
+        # Сохраняем
         placeholder_path = './static/placeholder.jpg'
-        img.save(placeholder_path, quality=95)
+        img.save(placeholder_path, quality=90)
         
-        print("🎨 Сгенерирована заглушка в стиле новостного канала")
+        print(f"🎨 Заглушка создана: {placeholder_path}")
+        print(f"🎨 Размер файла: {os.path.getsize(placeholder_path)} байт")
+        
         return placeholder_path
         
     except Exception as e:
-        print(f"⚠️ Ошибка генерации заглушки: {e}")
-        # Fallback - простая заглушка
-        try:
-            from PIL import Image, ImageDraw
-            img = Image.new('RGB', (800, 600), color='#0a1931')
-            draw = ImageDraw.Draw(img)
-            # Красные полосы
-            draw.rectangle([0, 0, 800, 80], fill='#8B0000')
-            draw.rectangle([0, 520, 800, 600], fill='#8B0000')
-            draw.rectangle([50, 50, 750, 550], outline='#d4af37', width=4)
-            draw.text((400, 280), "Live Питер", fill='#ffffff', anchor='mm')
-            draw.text((400, 320), "НОВОСТНОЙ КАНАЛ", fill='#d4af37', anchor='mm')
-            # Бегущая строка
-            draw.text((50, 560), "САНКТ-ПЕТЕРБУРГ • АКТУАЛЬНЫЕ НОВОСТИ", fill='#ffffff')
-            placeholder_path = './static/placeholder.jpg'
-            img.save(placeholder_path)
-            return placeholder_path
-        except Exception as e2:
-            print(f"⚠️ Не удалось создать даже простую заглушку: {e2}")
-            return None
+        print(f"⚠️ Критическая ошибка создания заглушки: {e}")
+        return None
 
 # --- Улучшенный парсинг для законченных новостей ---
 def extract_complete_text_from_html(html_content, title):
@@ -632,24 +601,43 @@ async def send_news_to_channel(news_item):
         image_path = news_item['image_path']
         word_count = news_item['word_count']
         
+        print(f"🖼️ Отправка новости: {title[:50]}...")
+        print(f"🖼️ Путь к изображению: {image_path}")
+        print(f"🖼️ Файл существует: {os.path.exists(image_path) if image_path else 'No path'}")
+        
         # Форматируем сообщение
-        message_text = summary  # Уже содержит заголовок и текст
+        message_text = summary
         
         if image_path and os.path.exists(image_path):
-            with open(image_path, 'rb') as photo:
-                await bot.send_photo(
+            print(f"🖼️ Размер изображения: {os.path.getsize(image_path)} байт")
+            try:
+                with open(image_path, 'rb') as photo:
+                    await bot.send_photo(
+                        CHANNEL_ID,
+                        photo,
+                        caption=message_text,
+                        parse_mode='HTML'
+                    )
+                print("✅ Изображение успешно отправлено")
+                
+                # Удаляем временные файлы (кроме заглушки)
+                if 'temp_image_' in image_path:
+                    try:
+                        os.remove(image_path)
+                        print("✅ Временный файл изображения удален")
+                    except Exception as e:
+                        print(f"⚠️ Не удалось удалить временный файл: {e}")
+                        
+            except Exception as e:
+                print(f"❌ Ошибка отправки изображения: {e}")
+                # Fallback: отправляем только текст
+                await bot.send_message(
                     CHANNEL_ID,
-                    photo,
-                    caption=message_text,
+                    message_text,
                     parse_mode='HTML'
                 )
-            # Удаляем временные файлы (кроме заглушки)
-            if 'temp_image_' in image_path:
-                try:
-                    os.remove(image_path)
-                except:
-                    pass
         else:
+            print("⚠️ Изображение не найдено, отправляем только текст")
             await bot.send_message(
                 CHANNEL_ID,
                 message_text,
