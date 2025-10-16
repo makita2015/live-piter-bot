@@ -88,6 +88,25 @@ async def health_server():
     
     return runner
 
+# --- Keep-Alive для Render ---
+async def keep_alive_ping():
+    """Периодический пинг для предотвращения сна на Render"""
+    print("🔄 Keep-alive задача ЗАПУЩЕНА")
+    while True:
+        try:
+            print(f"🔄 Пробую ping на порт {PORT}...")
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'http://localhost:{PORT}/health', timeout=10) as resp:
+                    if resp.status == 200:
+                        print(f"🔄 Keep-alive ping: {datetime.now().strftime('%H:%M:%S')}")
+                    else:
+                        print(f"⚠️ Keep-alive ping failed: {resp.status}")
+        except Exception as e:
+            print(f"⚠️ Keep-alive error: {e}")
+        
+        # Пинг каждые 5 минут (300 секунд)
+        await asyncio.sleep(300)
+
 # --- Функция генерации красивой заглушки для Live Питер 📸 ---
 def generate_beautiful_placeholder():
     """Генерация заглушки в стиле реальных новостных каналов"""
@@ -148,7 +167,7 @@ def generate_beautiful_placeholder():
         draw.rectangle([20, 20, 60, 60], fill='#ffffff', outline='#8B0000', width=2)
         draw.text((40, 40), "LP", fill='#8B0000', font=font_medium, anchor='mm')
         
-        # Сохраняем изображение (ИСПРАВЛЕННЫЙ ПУТЬ)
+        # Сохраняем изображение
         os.makedirs('./static', exist_ok=True)
         placeholder_path = './static/placeholder.jpg'
         img.save(placeholder_path, quality=95)
@@ -436,7 +455,6 @@ async def download_image(session, url):
             if response.status == 200:
                 content_type = response.headers.get('content-type', '')
                 if 'image' in content_type:
-                    # ИСПРАВЛЕННЫЙ ПУТЬ
                     filename = f"./temp_image_{int(time.time())}_{random.randint(1000, 9999)}.jpg"
                     content = await response.read()
                     
@@ -815,10 +833,14 @@ async def main():
     print(f"⏰ Интервал автопостинга: {AUTO_POST_INTERVAL} сек")
     print(f"📺 Канал: {CHANNEL_ID}")
     print(f"🌐 Порт: {PORT}")
-    print("🔧 Версия: с автогенерацией заглушки в стиле новостного канала")
+    print("🔧 Версия: с keep-alive для Render")
     
     # Запускаем HTTP сервер для здоровья
     health_runner = await health_server()
+    
+    # Запускаем keep-alive задачу
+    print("🔄 Создаю keep-alive задачу...")
+    keep_alive_task = asyncio.create_task(keep_alive_ping())
     
     try:
         # Запускаем задачи
@@ -826,7 +848,7 @@ async def main():
         poster_task = asyncio.create_task(auto_poster())
         
         # Ожидаем завершения задач
-        await asyncio.gather(bot_task, poster_task)
+        await asyncio.gather(bot_task, poster_task, keep_alive_task)
     except Exception as e:
         print(f"💥 Ошибка: {e}")
     finally:
