@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# bot.py - Новостной бот для канала "Live Питер 📸" (компактная версия)
+# bot.py - Новостной бот для канала "Live Питер 📸" с защитой от дублирования
 import os
 import time
 import json
@@ -9,10 +9,28 @@ import aiohttp
 import re
 import signal
 import sys
+import socket
 from datetime import datetime
 from bs4 import BeautifulSoup
 from telebot.async_telebot import AsyncTeleBot
 from dotenv import load_dotenv
+
+# --- Защита от множественных запусков ---
+def check_single_instance(port=9999):
+    """Проверяет, что запущен только один экземпляр бота"""
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(('0.0.0.0', port))
+        print("✅ Проверка единственного экземпляра: УСПЕШНО")
+        return sock
+    except socket.error:
+        print("❌ ОШИБКА: Уже запущен другой экземпляр бота!")
+        print("💡 Решение: Закройте все локальные копии бота")
+        sys.exit(1)
+
+# Проверяем при запуске
+instance_socket = check_single_instance()
 
 # Проверка и создание необходимых папок
 os.makedirs('./static', exist_ok=True)
@@ -36,6 +54,77 @@ bot = AsyncTeleBot(BOT_TOKEN)
 
 # --- Глобальная переменная для заглушки ---
 DEFAULT_PLACEHOLDER_PATH = './static/placeholder.jpg'
+
+# --- Функция создания заглушки ---
+def generate_beautiful_placeholder():
+    """Создание заглушки в стиле Live Питер"""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        
+        # Размеры как на фото 2
+        width, height = 800, 450
+        
+        # Создаем изображение с темно-синим фоном
+        img = Image.new('RGB', (width, height), color='#0a1931')
+        draw = ImageDraw.Draw(img)
+        
+        # Красные полосы сверху и снизу
+        red_strip_height = 60
+        draw.rectangle([0, 0, width, red_strip_height], fill='#8B0000')
+        draw.rectangle([0, height - red_strip_height, width, height], fill='#8B0000')
+        
+        # Основной контент
+        try:
+            font_large = ImageFont.load_default()
+            font_medium = ImageFont.load_default()
+            font_small = ImageFont.load_default()
+        except:
+            font_large = ImageFont.load_default()
+            font_medium = ImageFont.load_default()
+            font_small = ImageFont.load_default()
+        
+        # Текст "Live Питер" - БЕЛЫЙ, крупный, по центру
+        live_piter_text = "Live Питер"
+        draw.text((400, 200), live_piter_text, fill='#FFFFFF', font=font_large, anchor='mm')
+        
+        # Текст "НОВОСТНОЙ КАНАЛ" - ЗОЛОТОЙ, под основным текстом
+        news_channel_text = "НОВОСТНОЙ КАНАЛ"
+        draw.text((400, 250), news_channel_text, fill='#d4af37', font=font_medium, anchor='mm')
+        
+        # Бегущая строка в нижней красной полосе - БЕЛАЯ
+        ticker_text = "САНКТ-ПЕТЕРБУРГ • АКТУАЛЬНЫЕ НОВОСТИ"
+        draw.text((400, height - 30), ticker_text, fill='#FFFFFF', font=font_small, anchor='mm')
+        
+        # Простая рамка
+        draw.rectangle([10, 10, width-10, height-10], outline='#d4af37', width=2)
+        
+        # Сохраняем
+        placeholder_path = './static/placeholder.jpg'
+        img.save(placeholder_path, quality=95)
+        
+        print(f"🎨 Заглушка создана: {placeholder_path}")
+        return placeholder_path
+        
+    except Exception as e:
+        print(f"⚠️ Ошибка создания заглушки: {e}")
+        return None
+
+def initialize_placeholder():
+    """Инициализация заглушки при запуске"""
+    global DEFAULT_PLACEHOLDER_PATH
+    try:
+        # Если заглушка не существует, создаем ее
+        if not os.path.exists(DEFAULT_PLACEHOLDER_PATH):
+            print("🖼️ Заглушка не найдена, создаем...")
+            DEFAULT_PLACEHOLDER_PATH = generate_beautiful_placeholder()
+            if DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH):
+                print("✅ Заглушка создана и инициализирована")
+            else:
+                print("❌ Не удалось создать заглушку")
+        else:
+            print("✅ Заглушка уже существует в папке static")
+    except Exception as e:
+        print(f"❌ Ошибка инициализации заглушки: {e}")
 
 # --- Управление опубликованными новостями ---
 def load_posted_news():
@@ -74,6 +163,8 @@ posted_news = load_posted_news()
 def signal_handler(signum, frame):
     print(f"🔻 Получен сигнал {signum}, сохраняем данные...")
     save_posted_news(posted_news)
+    if instance_socket:
+        instance_socket.close()
     sys.exit(0)
 
 signal.signal(signal.SIGINT, signal_handler)
@@ -91,7 +182,7 @@ async def health_server():
                 "sources": len(NEWS_SOURCES),
                 "posted": len(posted_news),
                 "timestamp": datetime.now().isoformat(),
-                "version": "5.0 компактная версия"
+                "version": "6.0 с защитой от дублирования"
             }, ensure_ascii=False),
             content_type='application/json'
         )
@@ -209,13 +300,13 @@ def extract_complete_text_from_html(html_content, title):
         
         # Берем только 2-3 первых значимых абзаца
         if meaningful_paragraphs:
-            selected_paragraphs = meaningful_paragraphs[:3]  # Только 2-3 абзаца
+            selected_paragraphs = meaningful_paragraphs[:3]
             full_text = '\n\n'.join(selected_paragraphs)
             
             if len(full_text.split()) < 50:
                 full_text = f"{title}\n\n{full_text}"
             
-            return full_text[:3000]  # Стандартный лимит
+            return full_text[:3000]
             
     except Exception as e:
         print(f"⚠️ Ошибка парсинга HTML: {e}")
@@ -284,7 +375,7 @@ def format_news_live_piter_style(title, description, full_text):
         if len(paragraphs) >= 2:
             intro = paragraphs[0]
             # Берем только 1-2 дополнительных абзаца
-            additional_paragraphs = paragraphs[1:3]  # Только 2-й и 3-й абзац
+            additional_paragraphs = paragraphs[1:3]
             formatted_text = f"{intro}\n\n" + "\n\n".join(additional_paragraphs)
         else:
             formatted_text = full_text
@@ -689,7 +780,7 @@ async def publish_news(count=1):
 async def send_welcome(message):
     welcome_text = """
 🤖 Новостной бот для канала "Live Питер 📸"
-КОМПАКТНАЯ ВЕРСИЯ
+ВЕРСИЯ 6.0 С ЗАЩИТОЙ ОТ ДУБЛИРОВАНИЯ
 
 📰 Источники:
 • 3 федеральных новостных портала
@@ -698,8 +789,9 @@ async def send_welcome(message):
 
 🎯 Особенности:
 • Компактные новости (2-3 абзаца)
-• Заглушка из папки static
-• Улучшенный keep-alive
+• Автоматическое создание заглушки
+• Защита от множественных запусков
+• Улучшенный keep-alive для Render
 • Автопостинг в рабочее время
 
 📋 Команды:
@@ -734,15 +826,16 @@ async def manual_post(message):
 @bot.message_handler(commands=['status'])
 async def bot_status(message):
     status_text = f"""
-📊 Статус бота (КОМПАКТНАЯ ВЕРСИЯ):
+📊 Статус бота (ВЕРСИЯ 6.0):
 
-🤖 Бот: Активен
+🤖 Бот: Активен с защитой от дублирования
 📰 Источников: {len(NEWS_SOURCES)}
 📨 Опубликовано: {len(posted_news)}
 🎯 Формат: Компактные новости (2-3 абзаца)
 ⏰ Keep-alive: каждые 8-10 минут
 🌐 Внешний ping: {'✅ Включен' if RENDER_APP_URL else '❌ Выключен'}
 🖼️ Заглушка: {'✅ В папке static' if os.path.exists(DEFAULT_PLACEHOLDER_PATH) else '❌ Не найдена'}
+🔒 Защита: ✅ Активна
 """
     await bot.reply_to(message, status_text)
 
@@ -805,13 +898,17 @@ async def auto_poster():
 
 async def main():
     """Основная функция запуска бота"""
-    print("🚀 Запуск новостного бота 'Live Питер 📸' (КОМПАКТНАЯ ВЕРСИЯ)...")
+    print("🚀 Запуск новостного бота 'Live Питер 📸' ВЕРСИЯ 6.0...")
     print(f"📰 Источников: {len(NEWS_SOURCES)}")
     print(f"🎯 Формат: компактные новости (2-3 абзаца)")
     print(f"⏰ Keep-alive: каждые 8-10 минут")
     print(f"🌐 Внешний URL: {RENDER_APP_URL or 'Не установлен'}")
     print(f"📺 Канал: {CHANNEL_ID}")
     print(f"🖼️ Заглушка: {DEFAULT_PLACEHOLDER_PATH}")
+    print(f"🔒 Защита от дублирования: ✅ АКТИВНА")
+    
+    # Инициализируем заглушку
+    initialize_placeholder()
     
     # Проверяем наличие заглушки
     if not os.path.exists(DEFAULT_PLACEHOLDER_PATH):
@@ -836,6 +933,8 @@ async def main():
         print(f"💥 Ошибка: {e}")
     finally:
         await health_runner.cleanup()
+        if instance_socket:
+            instance_socket.close()
 
 if __name__ == "__main__":
     try:
@@ -843,8 +942,10 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("👋 Бот остановлен")
         save_posted_news(posted_news)
+        if instance_socket:
+            instance_socket.close()
     except Exception as e:
         print(f"💥 Фатальная ошибка: {e}")
         save_posted_news(posted_news)
-
-
+        if instance_socket:
+            instance_socket.close()
