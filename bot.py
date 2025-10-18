@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# bot.py - Новостной бот для канала "Live Питер 📸" (полная версия)
+# bot.py - Новостной бот для канала "Live Питер 📸" с улучшенным keep-alive
 import os
 import time
 import json
@@ -26,6 +26,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@LivePiter")
 AUTO_POST_INTERVAL = int(os.getenv("AUTO_POST_INTERVAL", "1800"))
 PORT = int(os.getenv("PORT", "10000"))
+RENDER_APP_URL = os.getenv("RENDER_APP_URL", "")  # URL вашего приложения на Render
 
 if not BOT_TOKEN:
     raise SystemExit("❌ BOT_TOKEN не установлен")
@@ -40,8 +41,17 @@ DEFAULT_PLACEHOLDER_PATH = None
 def load_posted_news():
     """Загрузка списка опубликованных новостей"""
     try:
+        # Пробуем загрузить из переменной окружения (для Render)
         posted_json = os.getenv("POSTED_NEWS", "[]")
-        return set(json.loads(posted_json))
+        posted_set = set(json.loads(posted_json))
+        
+        # Дополнительно пробуем загрузить из файла (для локального развития)
+        if os.path.exists('posted.json'):
+            with open('posted.json', 'r', encoding='utf-8') as f:
+                file_data = json.load(f)
+                posted_set.update(file_data)
+                
+        return posted_set
     except Exception as e:
         print(f"⚠️ Ошибка загрузки posted news: {e}")
         return set()
@@ -51,8 +61,14 @@ def save_posted_news(posted_news_set):
     try:
         posted_list = list(posted_news_set)
         print(f"💾 Сохранено {len(posted_list)} новостей")
-        if posted_list:
-            print("📋 Последние новости:", posted_list[-3:])
+        
+        # Сохраняем в переменную окружения (для Render)
+        os.environ["POSTED_NEWS"] = json.dumps(posted_list)
+        
+        # Дополнительно сохраняем в файл (для резервной копии)
+        with open('posted.json', 'w', encoding='utf-8') as f:
+            json.dump(posted_list, f, ensure_ascii=False, indent=2)
+            
     except Exception as e:
         print(f"⚠️ Ошибка сохранения posted news: {e}")
 
@@ -78,7 +94,8 @@ async def health_server():
                 "status": "🟢 Бот работает",
                 "sources": len(NEWS_SOURCES),
                 "posted": len(posted_news),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
+                "version": "2.0 with enhanced keep-alive"
             }),
             content_type='application/json'
         )
@@ -95,24 +112,55 @@ async def health_server():
     
     return runner
 
-# --- Keep-Alive для Render ---
-async def keep_alive_ping():
-    """Периодический пинг для предотвращения сна на Render"""
-    print("🔄 Keep-alive задача ЗАПУЩЕНА")
+# --- УЛУЧШЕННЫЙ Keep-Alive для Render ---
+async def enhanced_keep_alive():
+    """Улучшенный keep-alive с внешним пингингом"""
+    print("🔄 ЗАПУСК УЛУЧШЕННОГО KEEP-ALIVE...")
+    
     while True:
         try:
-            print(f"🔄 Пробую ping на порт {PORT}...")
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f'http://localhost:{PORT}/health', timeout=10) as resp:
-                    if resp.status == 200:
-                        print(f"🔄 Keep-alive ping: {datetime.now().strftime('%H:%M:%S')}")
-                    else:
-                        print(f"⚠️ Keep-alive ping failed: {resp.status}")
+            # 1. Внутренний пинг нашего же сервера
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f'http://localhost:{PORT}/health', timeout=10) as resp:
+                        if resp.status == 200:
+                            print(f"✅ Внутренний ping: {datetime.now().strftime('%H:%M:%S')}")
+            except Exception as e:
+                print(f"⚠️ Ошибка внутреннего ping: {e}")
+            
+            # 2. ВНЕШНИЙ PING - критически важно для предотвращения сна Render
+            if RENDER_APP_URL:
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        # Добавляем случайный параметр чтобы избежать кеширования
+                        random_param = f"?ping={random.randint(1000,9999)}"
+                        async with session.get(f'{RENDER_APP_URL}/health{random_param}', timeout=30) as resp:
+                            if resp.status == 200:
+                                print(f"🌐 ВНЕШНИЙ PING УСПЕШЕН: {datetime.now().strftime('%H:%M:%S')}")
+                            else:
+                                print(f"⚠️ Внешний ping статус: {resp.status}")
+                except Exception as e:
+                    print(f"⚠️ Ошибка внешнего ping: {e}")
+            else:
+                print("ℹ️ RENDER_APP_URL не установлен, внешний ping пропущен")
+            
+            # 3. Дополнительная активность - периодическая публикация новостей
+            current_hour = datetime.now().hour
+            if 8 <= current_hour <= 23:  # Только в активное время суток
+                if random.random() < 0.3:  # 30% шанс на публикацию при проверке
+                    print("🎰 Случайная активация автопостинга...")
+                    try:
+                        await publish_news(1)
+                    except Exception as e:
+                        print(f"⚠️ Ошибка случайного постинга: {e}")
+            
         except Exception as e:
-            print(f"⚠️ Keep-alive error: {e}")
+            print(f"⚠️ Общая ошибка keep-alive: {e}")
         
-        # Пинг каждые 5 минут (300 секунд)
-        await asyncio.sleep(300)
+        # Интервал: 8-10 минут (480-600 секунд) - оптимально для Render
+        sleep_time = random.randint(480, 600)
+        print(f"💤 Следующий keep-alive через {sleep_time} секунд...")
+        await asyncio.sleep(sleep_time)
 
 # --- Функция генерации красивой заглушки для Live Питер 📸 ---
 def generate_beautiful_placeholder():
@@ -133,17 +181,8 @@ def generate_beautiful_placeholder():
         
         # Текст
         try:
-            # Пробуем разные шрифты
-            try:
-                font_large = ImageFont.truetype("arial.ttf", 48)
-                font_medium = ImageFont.truetype("arial.ttf", 24)
-            except:
-                try:
-                    font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 48)
-                    font_medium = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
-                except:
-                    font_large = ImageFont.load_default()
-                    font_medium = ImageFont.load_default()
+            font_large = ImageFont.load_default()
+            font_medium = ImageFont.load_default()
         except:
             font_large = ImageFont.load_default()
             font_medium = ImageFont.load_default()
@@ -161,8 +200,6 @@ def generate_beautiful_placeholder():
         img.save(placeholder_path, quality=90)
         
         print(f"🎨 Заглушка создана: {placeholder_path}")
-        print(f"🎨 Размер файла: {os.path.getsize(placeholder_path)} байт")
-        
         return placeholder_path
         
     except Exception as e:
@@ -736,6 +773,7 @@ async def publish_news(count=1):
 async def send_welcome(message):
     welcome_text = """
 🤖 Новостной бот для канала "Live Питер 📸"
+УЛУЧШЕННАЯ ВЕРСИЯ С KEEP-ALIVE
 
 📰 Источники:
 • 3 федеральных новостных портала
@@ -744,18 +782,28 @@ async def send_welcome(message):
 
 🎯 Особенности:
 • Законченные новости с полной смысловой нагрузкой
-• Локальный контекст Санкт-Петербурга
+• Улучшенный keep-alive для Render
+• Автоматические пинги каждые 8-10 минут
 • Стиль оформления как в "Live Питер 📸"
-• Автоматический подбор изображений
-• Красивая авторская заглушка
 
 📋 Команды:
 /post - Опубликовать новости
 /status - Статус бота  
 /stats - Статистика
 /sources - Список источников
+/wake - Принудительная активация
 """
     await bot.reply_to(message, welcome_text)
+
+@bot.message_handler(commands=['wake'])
+async def force_wake(message):
+    """Принудительная активация бота"""
+    try:
+        await bot.reply_to(message, "🔔 Активирую бота...")
+        await publish_news(1)
+        await bot.reply_to(message, "✅ Бот активирован и опубликовал новость")
+    except Exception as e:
+        await bot.reply_to(message, f"❌ Ошибка активации: {e}")
 
 @bot.message_handler(commands=['post'])
 async def manual_post(message):
@@ -770,13 +818,14 @@ async def manual_post(message):
 @bot.message_handler(commands=['status'])
 async def bot_status(message):
     status_text = f"""
-📊 Статус бота:
+📊 Статус бота (УЛУЧШЕННАЯ ВЕРСИЯ):
 
-🤖 Бот: Активен
+🤖 Бот: Активен с keep-alive
 📰 Источников: {len(NEWS_SOURCES)}
 📨 Опубликовано: {len(posted_news)}
 🎯 Формат: "Live Питер 📸"
-⏰ Интервал: {AUTO_POST_INTERVAL} сек
+⏰ Keep-alive: каждые 8-10 минут
+🌐 Внешний ping: {'✅ Включен' if RENDER_APP_URL else '❌ Выключен'}
 🏙️ Локальные: {sum(1 for s in NEWS_SOURCES if 'fontanka' in s or '78' in s or 'kanal7' in s or 'peterburg' in s)} источников
 """
     await bot.reply_to(message, status_text)
@@ -817,31 +866,36 @@ async def show_sources(message):
 async def auto_poster():
     """Фоновая задача автоматической публикации"""
     print("🔄 Запуск автоматической публикации...")
-    print("🎯 Формат: законченные новости в стиле Live Питер 📸")
     
     while True:
         try:
-            news_count = random.randint(1, 2)
-            print(f"📰 Автопостинг: публикую {news_count} новостей...")
+            # Публикуем в активное время (8:00-23:00)
+            current_hour = datetime.now().hour
+            if 8 <= current_hour <= 23:
+                news_count = random.randint(1, 2)
+                print(f"📰 Автопостинг: публикую {news_count} новостей...")
+                await publish_news(news_count)
+            else:
+                print("💤 Ночное время, автопостинг приостановлен")
             
-            await publish_news(news_count)
-            
-            print(f"⏳ Следующая проверка через {AUTO_POST_INTERVAL} секунд...")
-            await asyncio.sleep(AUTO_POST_INTERVAL)
+            # Случайный интервал 25-40 минут
+            sleep_time = random.randint(1500, 2400)
+            print(f"⏳ Следующая проверка через {sleep_time//60} минут...")
+            await asyncio.sleep(sleep_time)
             
         except Exception as e:
             print(f"⚠️ Ошибка в авто-постинге: {e}")
-            await asyncio.sleep(300)  # Ждем 5 минут при ошибке
+            await asyncio.sleep(600)
 
 async def main():
     """Основная функция запуска бота"""
-    print("🚀 Запуск новостного бота 'Live Питер 📸'...")
-    print(f"📰 Источников: {len(NEWS_SOURCES)} (федеральные + питерские)")
+    print("🚀 Запуск новостного бота 'Live Питер 📸' УЛУЧШЕННАЯ ВЕРСИЯ...")
+    print(f"📰 Источников: {len(NEWS_SOURCES)}")
     print(f"🎯 Формат: законченные новости с полной смысловой нагрузкой")
-    print(f"⏰ Интервал автопостинга: {AUTO_POST_INTERVAL} сек")
+    print(f"⏰ Keep-alive: каждые 8-10 минут")
+    print(f"🌐 Внешний URL: {RENDER_APP_URL or 'Не установлен'}")
     print(f"📺 Канал: {CHANNEL_ID}")
     print(f"🌐 Порт: {PORT}")
-    print("🔧 Версия: с keep-alive для Render")
     
     # Инициализируем заглушку при запуске
     initialize_placeholder()
@@ -849,17 +903,17 @@ async def main():
     # Запускаем HTTP сервер для здоровья
     health_runner = await health_server()
     
-    # Запускаем keep-alive задачу
-    print("🔄 Создаю keep-alive задачу...")
-    keep_alive_task = asyncio.create_task(keep_alive_ping())
-    
     try:
-        # Запускаем задачи
-        bot_task = asyncio.create_task(bot.polling(non_stop=True))
-        poster_task = asyncio.create_task(auto_poster())
+        # Запускаем ВСЕ задачи
+        tasks = [
+            asyncio.create_task(bot.polling(non_stop=True)),
+            asyncio.create_task(auto_poster()),
+            asyncio.create_task(enhanced_keep_alive())  # УЛУЧШЕННЫЙ keep-alive
+        ]
         
-        # Ожидаем завершения задач
-        await asyncio.gather(bot_task, poster_task, keep_alive_task)
+        print("✅ Все задачи запущены")
+        await asyncio.gather(*tasks)
+        
     except Exception as e:
         print(f"💥 Ошибка: {e}")
     finally:
