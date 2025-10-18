@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# bot.py - Новостной бот для канала "Live Питер 📸" с исправленной заглушкой
+# bot.py - Новостной бот для канала "Live Питер 📸" (компактная версия)
 import os
 import time
 import json
@@ -26,7 +26,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@LivePiter")
 AUTO_POST_INTERVAL = int(os.getenv("AUTO_POST_INTERVAL", "1800"))
 PORT = int(os.getenv("PORT", "10000"))
-RENDER_APP_URL = os.getenv("RENDER_APP_URL", "")  # URL вашего приложения на Render
+RENDER_APP_URL = os.getenv("RENDER_APP_URL", "")
 
 if not BOT_TOKEN:
     raise SystemExit("❌ BOT_TOKEN не установлен")
@@ -35,17 +35,15 @@ if not BOT_TOKEN:
 bot = AsyncTeleBot(BOT_TOKEN)
 
 # --- Глобальная переменная для заглушки ---
-DEFAULT_PLACEHOLDER_PATH = None
+DEFAULT_PLACEHOLDER_PATH = './static/placeholder.jpg'
 
 # --- Управление опубликованными новостями ---
 def load_posted_news():
     """Загрузка списка опубликованных новостей"""
     try:
-        # Пробуем загрузить из переменной окружения (для Render)
         posted_json = os.getenv("POSTED_NEWS", "[]")
         posted_set = set(json.loads(posted_json))
         
-        # Дополнительно пробуем загрузить из файла (для локального развития)
         if os.path.exists('posted.json'):
             with open('posted.json', 'r', encoding='utf-8') as f:
                 file_data = json.load(f)
@@ -62,10 +60,8 @@ def save_posted_news(posted_news_set):
         posted_list = list(posted_news_set)
         print(f"💾 Сохранено {len(posted_list)} новостей")
         
-        # Сохраняем в переменную окружения (для Render)
         os.environ["POSTED_NEWS"] = json.dumps(posted_list)
         
-        # Дополнительно сохраняем в файл (для резервной копии)
         with open('posted.json', 'w', encoding='utf-8') as f:
             json.dump(posted_list, f, ensure_ascii=False, indent=2)
             
@@ -95,8 +91,7 @@ async def health_server():
                 "sources": len(NEWS_SOURCES),
                 "posted": len(posted_news),
                 "timestamp": datetime.now().isoformat(),
-                "version": "3.0 с исправленной заглушкой",
-                "uptime_robot": "✅ Мониторинг активен"
+                "version": "5.0 компактная версия"
             }, ensure_ascii=False),
             content_type='application/json'
         )
@@ -110,18 +105,17 @@ async def health_server():
     site = web.TCPSite(runner, '0.0.0.0', PORT)
     await site.start()
     print(f"🌐 HTTP сервер запущен на порту {PORT}")
-    print(f"🔗 URL для Uptime Robot: https://your-app-name.onrender.com/health")
     
     return runner
 
-# --- УЛУЧШЕННЫЙ Keep-Alive для Render ---
+# --- Keep-Alive для Render ---
 async def enhanced_keep_alive():
     """Улучшенный keep-alive с внешним пингингом"""
     print("🔄 ЗАПУСК УЛУЧШЕННОГО KEEP-ALIVE...")
     
     while True:
         try:
-            # 1. Внутренний пинг нашего же сервера
+            # Внутренний пинг
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(f'http://localhost:{PORT}/health', timeout=10) as resp:
@@ -130,26 +124,21 @@ async def enhanced_keep_alive():
             except Exception as e:
                 print(f"⚠️ Ошибка внутреннего ping: {e}")
             
-            # 2. ВНЕШНИЙ PING - критически важно для предотвращения сна Render
+            # Внешний PING
             if RENDER_APP_URL:
                 try:
                     async with aiohttp.ClientSession() as session:
-                        # Добавляем случайный параметр чтобы избежать кеширования
                         random_param = f"?ping={random.randint(1000,9999)}"
                         async with session.get(f'{RENDER_APP_URL}/health{random_param}', timeout=30) as resp:
                             if resp.status == 200:
                                 print(f"🌐 ВНЕШНИЙ PING УСПЕШЕН: {datetime.now().strftime('%H:%M:%S')}")
-                            else:
-                                print(f"⚠️ Внешний ping статус: {resp.status}")
                 except Exception as e:
                     print(f"⚠️ Ошибка внешнего ping: {e}")
-            else:
-                print("ℹ️ RENDER_APP_URL не установлен, внешний ping пропущен")
             
-            # 3. Дополнительная активность - периодическая публикация новостей
+            # Случайная публикация
             current_hour = datetime.now().hour
-            if 8 <= current_hour <= 23:  # Только в активное время суток
-                if random.random() < 0.3:  # 30% шанс на публикацию при проверке
+            if 8 <= current_hour <= 23:
+                if random.random() < 0.3:
                     print("🎰 Случайная активация автопостинга...")
                     try:
                         await publish_news(1)
@@ -159,117 +148,13 @@ async def enhanced_keep_alive():
         except Exception as e:
             print(f"⚠️ Общая ошибка keep-alive: {e}")
         
-        # Интервал: 8-10 минут (480-600 секунд) - оптимально для Render
         sleep_time = random.randint(480, 600)
         print(f"💤 Следующий keep-alive через {sleep_time} секунд...")
         await asyncio.sleep(sleep_time)
 
-# --- ИСПРАВЛЕННАЯ Функция генерации заглушки как на фото 2 ---
-def generate_beautiful_placeholder():
-    """Генерация заглушки в стиле Live Питер как на фото 2"""
-    try:
-        from PIL import Image, ImageDraw, ImageFont
-        
-        # Размеры как на фото 2
-        width, height = 800, 450  # Более компактный размер
-        
-        # Создаем изображение с темно-синим фоном
-        img = Image.new('RGB', (width, height), color='#0a1931')
-        draw = ImageDraw.Draw(img)
-        
-        # Красные полосы сверху и снизу (как на фото 2)
-        red_strip_height = 60
-        draw.rectangle([0, 0, width, red_strip_height], fill='#8B0000')  # Верхняя полоса
-        draw.rectangle([0, height - red_strip_height, width, height], fill='#8B0000')  # Нижняя полоса
-        
-        # Основной контент
-        try:
-            # Пробуем загрузить шрифты
-            try:
-                # Основной шрифт для "Live Питер"
-                font_large = ImageFont.truetype("arial.ttf", 48)
-                # Шрифт для "НОВОСТНОЙ КАНАЛ"  
-                font_medium = ImageFont.truetype("arial.ttf", 28)
-                # Шрифт для бегущей строки
-                font_small = ImageFont.truetype("arial.ttf", 20)
-            except:
-                # Fallback на стандартные шрифты
-                font_large = ImageFont.load_default()
-                font_medium = ImageFont.load_default()
-                font_small = ImageFont.load_default()
-        except:
-            font_large = ImageFont.load_default()
-            font_medium = ImageFont.load_default()
-            font_small = ImageFont.load_default()
-        
-        # Текст "Live Питер" - БЕЛЫЙ, крупный, по центру
-        live_piter_text = "Live Питер"
-        live_piter_bbox = draw.textbbox((0, 0), live_piter_text, font=font_large)
-        live_piter_width = live_piter_bbox[2] - live_piter_bbox[0]
-        live_piter_x = (width - live_piter_width) // 2
-        live_piter_y = height // 2 - 50
-        draw.text((live_piter_x, live_piter_y), live_piter_text, fill='#FFFFFF', font=font_large)
-        
-        # Текст "НОВОСТНОЙ КАНАЛ" - ЗОЛОТОЙ, под основным текстом
-        news_channel_text = "НОВОСТНОЙ КАНАЛ"
-        news_bbox = draw.textbbox((0, 0), news_channel_text, font=font_medium)
-        news_width = news_bbox[2] - news_bbox[0]
-        news_x = (width - news_width) // 2
-        news_y = live_piter_y + 60
-        draw.text((news_x, news_y), news_channel_text, fill='#d4af37', font=font_medium)
-        
-        # Бегущая строка в нижней красной полосе - БЕЛАЯ
-        ticker_text = "САНКТ-ПЕТЕРБУРГ • АКТУАЛЬНЫЕ НОВОСТИ"
-        ticker_bbox = draw.textbbox((0, 0), ticker_text, font=font_small)
-        ticker_width = ticker_bbox[2] - ticker_bbox[0]
-        ticker_x = (width - ticker_width) // 2
-        ticker_y = height - red_strip_height + 20
-        draw.text((ticker_x, ticker_y), ticker_text, fill='#FFFFFF', font=font_small)
-        
-        # Простая рамка вокруг всего контента
-        draw.rectangle([10, 10, width-10, height-10], outline='#d4af37', width=2)
-        
-        # Сохраняем
-        placeholder_path = './static/placeholder.jpg'
-        img.save(placeholder_path, quality=95)
-        
-        print(f"🎨 Заглушка создана в стиле фото 2: {placeholder_path}")
-        return placeholder_path
-        
-    except Exception as e:
-        print(f"⚠️ Ошибка создания заглушки: {e}")
-        # Резервная простая заглушка
-        try:
-            from PIL import Image, ImageDraw
-            img = Image.new('RGB', (800, 450), color='#0a1931')
-            draw = ImageDraw.Draw(img)
-            draw.rectangle([0, 0, 800, 60], fill='#8B0000')
-            draw.rectangle([0, 390, 800, 450], fill='#8B0000')
-            draw.text((400, 200), "Live Питер", fill='#FFFFFF', anchor='mm')
-            draw.text((400, 250), "НОВОСТНОЙ КАНАЛ", fill='#d4af37', anchor='mm')
-            draw.text((400, 420), "САНКТ-ПЕТЕРБУРГ • АКТУАЛЬНЫЕ НОВОСТИ", fill='#FFFFFF', anchor='mm')
-            placeholder_path = './static/placeholder.jpg'
-            img.save(placeholder_path)
-            return placeholder_path
-        except Exception as e2:
-            print(f"⚠️ Не удалось создать даже простую заглушку: {e2}")
-            return None
-
-def initialize_placeholder():
-    """Инициализация заглушки при запуске"""
-    global DEFAULT_PLACEHOLDER_PATH
-    try:
-        DEFAULT_PLACEHOLDER_PATH = generate_beautiful_placeholder()
-        if DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH):
-            print("✅ Заглушка инициализирована при запуске")
-        else:
-            print("❌ Не удалось создать заглушку при запуске")
-    except Exception as e:
-        print(f"❌ Ошибка инициализации заглушки: {e}")
-
 # --- Улучшенный парсинг для законченных новостей ---
 def extract_complete_text_from_html(html_content, title):
-    """Извлечение полного текста новости с сохранением смысла"""
+    """Извлечение полного текста новости"""
     try:
         soup = BeautifulSoup(html_content, 'html.parser')
         
@@ -310,7 +195,7 @@ def extract_complete_text_from_html(html_content, title):
         
         for element in text_elements:
             text = element.get_text().strip()
-            # Фильтрация: убираем короткие, рекламные и технические тексты
+            # Фильтрация
             if (len(text) > 40 and 
                 not any(x in text for x in [
                     '©', 'Фото:', 'Источник:', 'Читайте также:', 'Редакция',
@@ -318,22 +203,19 @@ def extract_complete_text_from_html(html_content, title):
                     'Lenta.ru', 'РИА Новости', 'Поделиться', 'Следите за',
                     'INTERFAX.RU', 'https://', 'http://', 'www.'
                 ]) and
-                not re.match(r'^\d{1,2}\s*[а-я]', text.lower()) and
                 len(text.split()) > 8 and
                 not text.startswith('http')):
                 meaningful_paragraphs.append(text)
         
-        # Формируем полный текст, сохраняя структуру
+        # Берем только 2-3 первых значимых абзаца
         if meaningful_paragraphs:
-            # Берем первые 6-8 значимых абзацев для сохранения контекста
-            selected_paragraphs = meaningful_paragraphs[:8]
+            selected_paragraphs = meaningful_paragraphs[:3]  # Только 2-3 абзаца
             full_text = '\n\n'.join(selected_paragraphs)
             
-            # Обеспечиваем минимальную длину
             if len(full_text.split()) < 50:
                 full_text = f"{title}\n\n{full_text}"
             
-            return full_text[:3000]  # Увеличили лимит для полных новостей
+            return full_text[:3000]  # Стандартный лимит
             
     except Exception as e:
         print(f"⚠️ Ошибка парсинга HTML: {e}")
@@ -345,36 +227,30 @@ def remove_duplicate_text(text):
     if not text:
         return text
     
-    # Разбиваем текст на предложения
     sentences = re.split(r'[.!?]+', text)
     sentences = [s.strip() for s in sentences if s.strip()]
     
-    # Удаляем дубликаты предложений (сохраняя порядок)
     unique_sentences = []
     seen_sentences = set()
     
     for sentence in sentences:
-        # Нормализуем предложение для сравнения (убираем лишние пробелы, приводим к нижнему регистру)
         normalized = re.sub(r'\s+', ' ', sentence).strip().lower()
         if normalized and normalized not in seen_sentences:
             seen_sentences.add(normalized)
             unique_sentences.append(sentence)
     
-    # Собираем текст обратно
     cleaned_text = '. '.join(unique_sentences) + '.' if unique_sentences else ''
     
-    # Если текст стал слишком коротким после очистки, возвращаем оригинал
     if len(cleaned_text.split()) < 20 and len(text.split()) > 30:
         return text
     
     return cleaned_text
 
 def create_engaging_title(original_title):
-    """Создание цепляющего заголовка в стиле Live Питер БЕЗ автоматических добавлений"""
-    # Очищаем заголовок от лишних элементов
+    """Создание цепляющего заголовка"""
     clean_title = original_title
     
-    # Убираем URL и источники из заголовка
+    # Убираем URL и источники
     clean_title = re.sub(r'https?://\S+|www\.\S+', '', clean_title)
     clean_title = re.sub(r'\b(INTERFAX\.RU|РИА\s*Новости|ТАСС|Lenta\.ru|Rambler)\b', '', clean_title, flags=re.IGNORECASE)
     
@@ -382,7 +258,7 @@ def create_engaging_title(original_title):
     clean_title = re.sub(r'[–—]\s*[–—]+', '—', clean_title)
     clean_title = re.sub(r'\.\s*\.+', '.', clean_title)
     
-    # Удаляем дублированный текст из заголовка
+    # Удаляем дублированный текст
     clean_title = remove_duplicate_text(clean_title)
     
     # Обрезаем слишком длинные заголовки
@@ -396,27 +272,20 @@ def create_engaging_title(original_title):
     return clean_title.strip()
 
 def format_news_live_piter_style(title, description, full_text):
-    """Форматирование новости в стиле Live Питер 📸"""
-    # Создаем чистый заголовок БЕЗ автоматических добавлений
+    """Форматирование новости в стиле Live Питер 📸 (компактная версия)"""
+    # Создаем чистый заголовок
     clean_title = create_engaging_title(title)
     
-    # Определяем основной текст
-    if full_text and len(full_text.split()) > 60:
-        # Используем полный текст, но структурируем его
+    # Определяем основной текст - берем только 2-3 абзаца
+    if full_text and len(full_text.split()) > 40:
         paragraphs = full_text.split('\n\n')
+        
+        # Берем максимум 3 абзаца
         if len(paragraphs) >= 2:
-            # Берем введение и ключевые детали
             intro = paragraphs[0]
-            key_details = []
-            
-            for p in paragraphs[1:4]:  # Берем следующие 2-3 абзаца
-                if len(p.split()) > 15 and len(key_details) < 2:
-                    key_details.append(p)
-            
-            if key_details:
-                formatted_text = f"{intro}\n\n" + "\n\n".join(key_details)
-            else:
-                formatted_text = intro
+            # Берем только 1-2 дополнительных абзаца
+            additional_paragraphs = paragraphs[1:3]  # Только 2-й и 3-й абзац
+            formatted_text = f"{intro}\n\n" + "\n\n".join(additional_paragraphs)
         else:
             formatted_text = full_text
     elif description and len(description.split()) > 20:
@@ -424,17 +293,16 @@ def format_news_live_piter_style(title, description, full_text):
     else:
         formatted_text = full_text if full_text else description
     
-    # УДАЛЯЕМ ВСЕ ССЫЛКИ И ИСТОЧНИКИ ИЗ ТЕКСТА
+    # Удаляем ссылки и источники
     formatted_text = re.sub(r'https?://\S+|www\.\S+', '', formatted_text)
     formatted_text = re.sub(r'\b(INTERFAX\.RU|РИА\s*Новости|ТАСС|Lenta\.ru|Rambler|Фонтанка\.ру|78\.ру|Каннал7|Петербург2|ДП)\b', '', formatted_text, flags=re.IGNORECASE)
-    formatted_text = re.sub(r'\.\s*[A-ZА-Я]+\s*\.\s*—', '.', formatted_text)  # Убираем источники в начале предложения
     
-    # УДАЛЯЕМ ДУБЛИРОВАННЫЙ ТЕКСТ
+    # Удаляем дублированный текст
     formatted_text = remove_duplicate_text(formatted_text)
     
     # Очистка и форматирование
     formatted_text = re.sub(r'\s+', ' ', formatted_text)
-    formatted_text = re.sub(r'\.\s+', '.\n\n', formatted_text)  # Добавляем абзацы
+    formatted_text = re.sub(r'\.\s+', '.\n\n', formatted_text)
     
     # Собираем финальное сообщение
     final_text = f"{clean_title}\n\n{formatted_text}"
@@ -442,29 +310,36 @@ def format_news_live_piter_style(title, description, full_text):
     # Убираем лишние пустые строки
     final_text = re.sub(r'\n\s*\n', '\n\n', final_text)
     
-    # Обрезаем до разумных пределов, но сохраняем смысл
+    # Обрезаем до стандартных пределов
     if len(final_text) > 3000:
-        sentences = final_text.split('. ')
-        if len(sentences) > 3:
-            final_text = '. '.join(sentences[:4]) + "."
+        # Ищем естественное место для обрезки
+        cut_position = final_text.rfind('. ', 2500, 3000)
+        if cut_position == -1:
+            cut_position = final_text.rfind('! ', 2500, 3000)
+        if cut_position == -1:
+            cut_position = final_text.rfind('? ', 2500, 3000)
+        if cut_position == -1:
+            cut_position = 2997
+        
+        final_text = final_text[:cut_position + 1]
     
     return final_text.strip()
 
-# --- ИСПРАВЛЕННЫЕ источники новостей ---
+# --- Источники новостей ---
 NEWS_SOURCES = [
-    # Общероссийские источники (рабочие)
+    # Общероссийские источники
     "https://lenta.ru/rss/news",
     "https://tass.ru/rss/v2.xml", 
     "https://news.rambler.ru/rss/world/",
     
-    # Санкт-Петербургские источники (ИСПРАВЛЕННЫЕ)
-    "https://www.fontanka.ru/fontanka.rss",  # Исправленный URL
-    "https://78.ru/text/rss.xml",           # Исправленный URL
-    "https://kanal7.ru/rss/",               # Исправленный URL
-    "https://peterburg2.ru/rss/",           # Исправленный URL
-    "https://www.dp.ru/rss/",               # Исправленный URL
+    # Санкт-Петербургские источники
+    "https://www.fontanka.ru/fontanka.rss",
+    "https://78.ru/text/rss.xml",
+    "https://kanal7.ru/rss/",
+    "https://peterburg2.ru/rss/",
+    "https://www.dp.ru/rss/",
     
-    # Дополнительные рабочие источники
+    # Дополнительные источники
     "https://ria.ru/export/rss2/archive/index.xml",
     "https://www.interfax.ru/rss.asp",
     "https://www.kommersant.ru/RSS/news.xml",
@@ -528,12 +403,10 @@ async def download_image(session, url):
                     filename = f"./temp_image_{int(time.time())}_{random.randint(1000, 9999)}.jpg"
                     content = await response.read()
                     
-                    if len(content) > 10240:  # Минимум 10KB
+                    if len(content) > 10240:
                         with open(filename, 'wb') as f:
                             f.write(content)
                         return filename
-                    else:
-                        print(f"⚠️ Изображение слишком маленькое: {len(content)} байт")
                 
     except Exception as e:
         print(f"⚠️ Ошибка скачивания изображения {url}: {e}")
@@ -615,7 +488,7 @@ async def get_all_news(limit_per_source=5):
         for source in NEWS_SOURCES:
             task = get_news_from_source(session, source, limit_per_source)
             tasks.append(task)
-            await asyncio.sleep(1)  # Задержка между запросами
+            await asyncio.sleep(1)
         
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
@@ -645,7 +518,7 @@ async def get_extended_news_text(link, title, session):
     return ""
 
 async def prepare_news_item(item):
-    """Подготовка новости к публикации с улучшенным форматированием"""
+    """Подготовка новости к публикации"""
     title = item.get('title', 'Без заголовка')
     link = item.get('link', '')
     description = item.get('description', '')
@@ -662,9 +535,9 @@ async def prepare_news_item(item):
     # Форматируем в стиле Live Питер
     final_text = format_news_live_piter_style(title, description, news_text)
     
-    # Проверяем минимальную длину - ВОССТАНАВЛИВАЕМ ФИЛЬТРАЦИЮ
+    # Проверяем минимальную длину
     word_count = len(final_text.split())
-    if word_count < 40:  # Минимум 40 слов для законченной новости
+    if word_count < 40:
         print(f"❌ Пропущена новость: '{title[:30]}...' - недостаточно текста ({word_count} слов)")
         return None
     
@@ -672,24 +545,21 @@ async def prepare_news_item(item):
     
     # Работа с изображением
     image_path = None
+    
+    # Сначала пробуем скачать изображение из новости
     if image_url:
         async with aiohttp.ClientSession() as session:
             image_path = await download_image(session, image_url)
             if image_path:
                 print("✅ Используем изображение из новости")
     
-    # Используем сгенерированную заглушку - УЛУЧШЕННАЯ ЛОГИКА
+    # Если нет изображения из новости - используем заглушку из static
     if not image_path:
-        if DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH):
+        if os.path.exists(DEFAULT_PLACEHOLDER_PATH):
             image_path = DEFAULT_PLACEHOLDER_PATH
-            print("✅ Используем заглушку, созданную при запуске")
+            print("✅ Используем заглушку из папки static")
         else:
-            # Пытаемся создать заглушку на лету
-            image_path = generate_beautiful_placeholder()
-            if image_path:
-                print("✅ Используем свежесозданную заглушку")
-            else:
-                print("⚠️ Не удалось создать заглушку")
+            print("⚠️ Заглушка не найдена в static, отправляем без изображения")
     
     return {
         'title': title,
@@ -707,15 +577,13 @@ async def send_news_to_channel(news_item):
         image_path = news_item['image_path']
         word_count = news_item['word_count']
         
-        print(f"🖼️ Отправка новости: {title[:50]}...")
-        print(f"🖼️ Путь к изображению: {image_path}")
-        print(f"🖼️ Файл существует: {os.path.exists(image_path) if image_path else 'No path'}")
+        print(f"📤 Отправка новости: {title[:50]}...")
         
         # Форматируем сообщение
         message_text = summary
         
         if image_path and os.path.exists(image_path):
-            print(f"🖼️ Размер изображения: {os.path.getsize(image_path)} байт")
+            print(f"🖼️ Используем изображение: {image_path}")
             try:
                 with open(image_path, 'rb') as photo:
                     await bot.send_photo(
@@ -724,9 +592,9 @@ async def send_news_to_channel(news_item):
                         caption=message_text,
                         parse_mode='HTML'
                     )
-                print("✅ Изображение успешно отправлено")
+                print("✅ Новость с изображением отправлена")
                 
-                # Удаляем временные файлы (кроме заглушки)
+                # Удаляем временные файлы (кроме заглушки из static)
                 if 'temp_image_' in image_path:
                     try:
                         os.remove(image_path)
@@ -735,7 +603,7 @@ async def send_news_to_channel(news_item):
                         print(f"⚠️ Не удалось удалить временный файл: {e}")
                         
             except Exception as e:
-                print(f"❌ Ошибка отправки изображения: {e}")
+                print(f"❌ Ошибка отправки с изображением: {e}")
                 # Fallback: отправляем только текст
                 await bot.send_message(
                     CHANNEL_ID,
@@ -743,7 +611,7 @@ async def send_news_to_channel(news_item):
                     parse_mode='HTML'
                 )
         else:
-            print("⚠️ Изображение не найдено, отправляем только текст")
+            print("ℹ️ Изображение не найдено, отправляем только текст")
             await bot.send_message(
                 CHANNEL_ID,
                 message_text,
@@ -760,7 +628,6 @@ async def send_news_to_channel(news_item):
 async def publish_news(count=1):
     """Публикация указанного количества новостей"""
     print(f"🚀 Запуск публикации {count} новостей...")
-    print("📏 Формат: законченные новости в стиле Live Питер 📸")
     
     all_news = await get_all_news()
     if not all_news:
@@ -783,7 +650,7 @@ async def publish_news(count=1):
     
     published_count = 0
     attempts = 0
-    max_attempts = min(len(new_news) * 2, 15)  # Максимум 15 попыток
+    max_attempts = min(len(new_news) * 2, 15)
     
     while published_count < count and attempts < max_attempts:
         if attempts >= len(new_news):
@@ -796,7 +663,7 @@ async def publish_news(count=1):
             prepared_item = await prepare_news_item(item)
             
             if prepared_item is None:
-                continue  # Пропускаем новости, не прошедшие проверку
+                continue
                 
             success = await send_news_to_channel(prepared_item)
             
@@ -822,7 +689,7 @@ async def publish_news(count=1):
 async def send_welcome(message):
     welcome_text = """
 🤖 Новостной бот для канала "Live Питер 📸"
-УЛУЧШЕННАЯ ВЕРСИЯ С ИСПРАВЛЕННОЙ ЗАГЛУШКОЙ
+КОМПАКТНАЯ ВЕРСИЯ
 
 📰 Источники:
 • 3 федеральных новостных портала
@@ -830,10 +697,10 @@ async def send_welcome(message):
 • 3 дополнительных надежных источника
 
 🎯 Особенности:
-• Законченные новости с полной смысловой нагрузкой
-• Исправленная заглушка как на фото 2
-• Улучшенный keep-alive для Render
-• Автоматические пинги каждые 8-10 минут
+• Компактные новости (2-3 абзаца)
+• Заглушка из папки static
+• Улучшенный keep-alive
+• Автопостинг в рабочее время
 
 📋 Команды:
 /post - Опубликовать новости
@@ -867,15 +734,15 @@ async def manual_post(message):
 @bot.message_handler(commands=['status'])
 async def bot_status(message):
     status_text = f"""
-📊 Статус бота (ВЕРСИЯ 3.0):
+📊 Статус бота (КОМПАКТНАЯ ВЕРСИЯ):
 
-🤖 Бот: Активен с keep-alive
+🤖 Бот: Активен
 📰 Источников: {len(NEWS_SOURCES)}
 📨 Опубликовано: {len(posted_news)}
-🎯 Формат: "Live Питер 📸"
+🎯 Формат: Компактные новости (2-3 абзаца)
 ⏰ Keep-alive: каждые 8-10 минут
 🌐 Внешний ping: {'✅ Включен' if RENDER_APP_URL else '❌ Выключен'}
-🏙️ Локальные: {sum(1 for s in NEWS_SOURCES if 'fontanka' in s or '78' in s or 'kanal7' in s or 'peterburg' in s)} источников
+🖼️ Заглушка: {'✅ В папке static' if os.path.exists(DEFAULT_PLACEHOLDER_PATH) else '❌ Не найдена'}
 """
     await bot.reply_to(message, status_text)
 
@@ -938,17 +805,18 @@ async def auto_poster():
 
 async def main():
     """Основная функция запуска бота"""
-    print("🚀 Запуск новостного бота 'Live Питер 📸' ВЕРСИЯ 3.0...")
+    print("🚀 Запуск новостного бота 'Live Питер 📸' (КОМПАКТНАЯ ВЕРСИЯ)...")
     print(f"📰 Источников: {len(NEWS_SOURCES)}")
-    print(f"🎯 Формат: законченные новости с полной смысловой нагрузкой")
+    print(f"🎯 Формат: компактные новости (2-3 абзаца)")
     print(f"⏰ Keep-alive: каждые 8-10 минут")
     print(f"🌐 Внешний URL: {RENDER_APP_URL or 'Не установлен'}")
     print(f"📺 Канал: {CHANNEL_ID}")
-    print(f"🌐 Порт: {PORT}")
-    print("🎨 Заглушка: исправленная версия как на фото 2")
+    print(f"🖼️ Заглушка: {DEFAULT_PLACEHOLDER_PATH}")
     
-    # Инициализируем заглушку при запуске
-    initialize_placeholder()
+    # Проверяем наличие заглушки
+    if not os.path.exists(DEFAULT_PLACEHOLDER_PATH):
+        print("⚠️ ВНИМАНИЕ: Заглушка не найдена в папке static!")
+        print("ℹ️ Будет использоваться режим без изображений")
     
     # Запускаем HTTP сервер для здоровья
     health_runner = await health_server()
@@ -958,7 +826,7 @@ async def main():
         tasks = [
             asyncio.create_task(bot.polling(non_stop=True)),
             asyncio.create_task(auto_poster()),
-            asyncio.create_task(enhanced_keep_alive())  # УЛУЧШЕННЫЙ keep-alive
+            asyncio.create_task(enhanced_keep_alive())
         ]
         
         print("✅ Все задачи запущены")
@@ -978,3 +846,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"💥 Фатальная ошибка: {e}")
         save_posted_news(posted_news)
+
+
