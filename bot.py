@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# bot.py - Новостной бот для канала "Live Питер 📸" с улучшенным keep-alive
+# bot.py - Новостной бот для канала "Live Питер 📸" с исправленной заглушкой
 import os
 import time
 import json
@@ -95,8 +95,9 @@ async def health_server():
                 "sources": len(NEWS_SOURCES),
                 "posted": len(posted_news),
                 "timestamp": datetime.now().isoformat(),
-                "version": "2.0 with enhanced keep-alive"
-            }),
+                "version": "3.0 с исправленной заглушкой",
+                "uptime_robot": "✅ Мониторинг активен"
+            }, ensure_ascii=False),
             content_type='application/json'
         )
     
@@ -109,6 +110,7 @@ async def health_server():
     site = web.TCPSite(runner, '0.0.0.0', PORT)
     await site.start()
     print(f"🌐 HTTP сервер запущен на порту {PORT}")
+    print(f"🔗 URL для Uptime Robot: https://your-app-name.onrender.com/health")
     
     return runner
 
@@ -162,49 +164,96 @@ async def enhanced_keep_alive():
         print(f"💤 Следующий keep-alive через {sleep_time} секунд...")
         await asyncio.sleep(sleep_time)
 
-# --- Функция генерации красивой заглушки для Live Питер 📸 ---
+# --- ИСПРАВЛЕННАЯ Функция генерации заглушки как на фото 2 ---
 def generate_beautiful_placeholder():
-    """Генерация надежной заглушки"""
+    """Генерация заглушки в стиле Live Питер как на фото 2"""
     try:
         from PIL import Image, ImageDraw, ImageFont
         
-        # Создаем простое изображение
-        img = Image.new('RGB', (800, 600), color='#0a1931')
+        # Размеры как на фото 2
+        width, height = 800, 450  # Более компактный размер
+        
+        # Создаем изображение с темно-синим фоном
+        img = Image.new('RGB', (width, height), color='#0a1931')
         draw = ImageDraw.Draw(img)
         
-        # Красные полосы
-        draw.rectangle([0, 0, 800, 80], fill='#8B0000')
-        draw.rectangle([0, 520, 800, 600], fill='#8B0000')
+        # Красные полосы сверху и снизу (как на фото 2)
+        red_strip_height = 60
+        draw.rectangle([0, 0, width, red_strip_height], fill='#8B0000')  # Верхняя полоса
+        draw.rectangle([0, height - red_strip_height, width, height], fill='#8B0000')  # Нижняя полоса
         
-        # Золотая рамка
-        draw.rectangle([50, 100, 750, 500], outline='#d4af37', width=4)
-        
-        # Текст
+        # Основной контент
         try:
-            font_large = ImageFont.load_default()
-            font_medium = ImageFont.load_default()
+            # Пробуем загрузить шрифты
+            try:
+                # Основной шрифт для "Live Питер"
+                font_large = ImageFont.truetype("arial.ttf", 48)
+                # Шрифт для "НОВОСТНОЙ КАНАЛ"  
+                font_medium = ImageFont.truetype("arial.ttf", 28)
+                # Шрифт для бегущей строки
+                font_small = ImageFont.truetype("arial.ttf", 20)
+            except:
+                # Fallback на стандартные шрифты
+                font_large = ImageFont.load_default()
+                font_medium = ImageFont.load_default()
+                font_small = ImageFont.load_default()
         except:
             font_large = ImageFont.load_default()
             font_medium = ImageFont.load_default()
+            font_small = ImageFont.load_default()
         
-        # Основной текст
-        draw.text((400, 280), "Live Питер", fill='#ffffff', font=font_large, anchor='mm')
-        draw.text((400, 340), "НОВОСТНОЙ КАНАЛ", fill='#d4af37', font=font_medium, anchor='mm')
+        # Текст "Live Питер" - БЕЛЫЙ, крупный, по центру
+        live_piter_text = "Live Питер"
+        live_piter_bbox = draw.textbbox((0, 0), live_piter_text, font=font_large)
+        live_piter_width = live_piter_bbox[2] - live_piter_bbox[0]
+        live_piter_x = (width - live_piter_width) // 2
+        live_piter_y = height // 2 - 50
+        draw.text((live_piter_x, live_piter_y), live_piter_text, fill='#FFFFFF', font=font_large)
         
-        # Бегущая строка
-        news_text = "САНКТ-ПЕТЕРБУРГ • АКТУАЛЬНЫЕ НОВОСТИ"
-        draw.text((400, 560), news_text, fill='#ffffff', font=font_medium, anchor='mm')
+        # Текст "НОВОСТНОЙ КАНАЛ" - ЗОЛОТОЙ, под основным текстом
+        news_channel_text = "НОВОСТНОЙ КАНАЛ"
+        news_bbox = draw.textbbox((0, 0), news_channel_text, font=font_medium)
+        news_width = news_bbox[2] - news_bbox[0]
+        news_x = (width - news_width) // 2
+        news_y = live_piter_y + 60
+        draw.text((news_x, news_y), news_channel_text, fill='#d4af37', font=font_medium)
+        
+        # Бегущая строка в нижней красной полосе - БЕЛАЯ
+        ticker_text = "САНКТ-ПЕТЕРБУРГ • АКТУАЛЬНЫЕ НОВОСТИ"
+        ticker_bbox = draw.textbbox((0, 0), ticker_text, font=font_small)
+        ticker_width = ticker_bbox[2] - ticker_bbox[0]
+        ticker_x = (width - ticker_width) // 2
+        ticker_y = height - red_strip_height + 20
+        draw.text((ticker_x, ticker_y), ticker_text, fill='#FFFFFF', font=font_small)
+        
+        # Простая рамка вокруг всего контента
+        draw.rectangle([10, 10, width-10, height-10], outline='#d4af37', width=2)
         
         # Сохраняем
         placeholder_path = './static/placeholder.jpg'
-        img.save(placeholder_path, quality=90)
+        img.save(placeholder_path, quality=95)
         
-        print(f"🎨 Заглушка создана: {placeholder_path}")
+        print(f"🎨 Заглушка создана в стиле фото 2: {placeholder_path}")
         return placeholder_path
         
     except Exception as e:
-        print(f"⚠️ Критическая ошибка создания заглушки: {e}")
-        return None
+        print(f"⚠️ Ошибка создания заглушки: {e}")
+        # Резервная простая заглушка
+        try:
+            from PIL import Image, ImageDraw
+            img = Image.new('RGB', (800, 450), color='#0a1931')
+            draw = ImageDraw.Draw(img)
+            draw.rectangle([0, 0, 800, 60], fill='#8B0000')
+            draw.rectangle([0, 390, 800, 450], fill='#8B0000')
+            draw.text((400, 200), "Live Питер", fill='#FFFFFF', anchor='mm')
+            draw.text((400, 250), "НОВОСТНОЙ КАНАЛ", fill='#d4af37', anchor='mm')
+            draw.text((400, 420), "САНКТ-ПЕТЕРБУРГ • АКТУАЛЬНЫЕ НОВОСТИ", fill='#FFFFFF', anchor='mm')
+            placeholder_path = './static/placeholder.jpg'
+            img.save(placeholder_path)
+            return placeholder_path
+        except Exception as e2:
+            print(f"⚠️ Не удалось создать даже простую заглушку: {e2}")
+            return None
 
 def initialize_placeholder():
     """Инициализация заглушки при запуске"""
@@ -773,7 +822,7 @@ async def publish_news(count=1):
 async def send_welcome(message):
     welcome_text = """
 🤖 Новостной бот для канала "Live Питер 📸"
-УЛУЧШЕННАЯ ВЕРСИЯ С KEEP-ALIVE
+УЛУЧШЕННАЯ ВЕРСИЯ С ИСПРАВЛЕННОЙ ЗАГЛУШКОЙ
 
 📰 Источники:
 • 3 федеральных новостных портала
@@ -782,9 +831,9 @@ async def send_welcome(message):
 
 🎯 Особенности:
 • Законченные новости с полной смысловой нагрузкой
+• Исправленная заглушка как на фото 2
 • Улучшенный keep-alive для Render
 • Автоматические пинги каждые 8-10 минут
-• Стиль оформления как в "Live Питер 📸"
 
 📋 Команды:
 /post - Опубликовать новости
@@ -818,7 +867,7 @@ async def manual_post(message):
 @bot.message_handler(commands=['status'])
 async def bot_status(message):
     status_text = f"""
-📊 Статус бота (УЛУЧШЕННАЯ ВЕРСИЯ):
+📊 Статус бота (ВЕРСИЯ 3.0):
 
 🤖 Бот: Активен с keep-alive
 📰 Источников: {len(NEWS_SOURCES)}
@@ -889,13 +938,14 @@ async def auto_poster():
 
 async def main():
     """Основная функция запуска бота"""
-    print("🚀 Запуск новостного бота 'Live Питер 📸' УЛУЧШЕННАЯ ВЕРСИЯ...")
+    print("🚀 Запуск новостного бота 'Live Питер 📸' ВЕРСИЯ 3.0...")
     print(f"📰 Источников: {len(NEWS_SOURCES)}")
     print(f"🎯 Формат: законченные новости с полной смысловой нагрузкой")
     print(f"⏰ Keep-alive: каждые 8-10 минут")
     print(f"🌐 Внешний URL: {RENDER_APP_URL or 'Не установлен'}")
     print(f"📺 Канал: {CHANNEL_ID}")
     print(f"🌐 Порт: {PORT}")
+    print("🎨 Заглушка: исправленная версия как на фото 2")
     
     # Инициализируем заглушку при запуске
     initialize_placeholder()
