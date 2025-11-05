@@ -10,7 +10,7 @@ import re
 import signal
 import sys
 import socket
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from bs4 import BeautifulSoup
 from telebot.async_telebot import AsyncTeleBot
 from dotenv import load_dotenv
@@ -55,7 +55,7 @@ bot = AsyncTeleBot(BOT_TOKEN)
 # --- Глобальные переменные для управления постингом ---
 DEFAULT_PLACEHOLDER_PATH = './static/placeholder.jpg'
 DAILY_POST_COUNTER = 0
-LAST_RESET_DATE = datetime.now().date()
+LAST_RESET_DATE = datetime.now(timezone.utc).date()
 MAX_DAILY_POSTS = 20
 
 # --- Управление заглушкой ---
@@ -122,7 +122,7 @@ def load_daily_stats():
                 'last_reset_date' in stats):
                 
                 DAILY_POST_COUNTER = stats.get('daily_post_counter', 0)
-                LAST_RESET_DATE = datetime.fromisoformat(stats.get('last_reset_date', datetime.now().isoformat())).date()
+                LAST_RESET_DATE = datetime.fromisoformat(stats.get('last_reset_date', datetime.now(timezone.utc).isoformat())).date()
                 print(f"📊 Загружена дневная статистика: {DAILY_POST_COUNTER}/20 постов")
             else:
                 print("⚠️ Невалидные данные в daily_stats.json, сбрасываю статистику")
@@ -138,7 +138,7 @@ def reset_daily_stats():
     """Сброс дневной статистики"""
     global DAILY_POST_COUNTER, LAST_RESET_DATE
     DAILY_POST_COUNTER = 0
-    LAST_RESET_DATE = datetime.now().date()
+    LAST_RESET_DATE = datetime.now(timezone.utc).date()
     print("📊 Новая дневная статистика инициализирована")
     save_daily_stats()
 
@@ -147,7 +147,7 @@ def save_daily_stats():
     try:
         stats = {
             'daily_post_counter': DAILY_POST_COUNTER,
-            'last_reset_date': datetime.now().isoformat(),
+            'last_reset_date': datetime.now(timezone.utc).isoformat(),
             'max_daily_posts': MAX_DAILY_POSTS
         }
         
@@ -162,7 +162,7 @@ def reset_daily_counter_if_needed():
     """Сброс счетчика если наступил новый день"""
     global DAILY_POST_COUNTER, LAST_RESET_DATE
     
-    current_date = datetime.now().date()
+    current_date = datetime.now(timezone.utc).date()
     if current_date != LAST_RESET_DATE:
         old_count = DAILY_POST_COUNTER
         DAILY_POST_COUNTER = 0
@@ -185,15 +185,18 @@ def increment_daily_counter():
     print(f"📈 Счетчик постов: {DAILY_POST_COUNTER}/{MAX_DAILY_POSTS}")
 
 # --- Функции для работы с московским временем ---
+def get_moscow_time():
+    """Получение текущего времени в Москве (UTC+3)"""
+    utc_now = datetime.now(timezone.utc)
+    moscow_offset = timezone(timedelta(hours=3))
+    moscow_time = utc_now.astimezone(moscow_offset)
+    return moscow_time
+
 def is_posting_time():
     """Проверка можно ли постить в текущее время (по Москве) - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
     try:
-        # Получаем текущее время в UTC
-        utc_now = datetime.utcnow()
-        
-        # Москва UTC+3
-        moscow_offset = timedelta(hours=3)
-        moscow_time = utc_now + moscow_offset
+        # Получаем текущее время в Москве
+        moscow_time = get_moscow_time()
         
         current_hour = moscow_time.hour
         current_minute = moscow_time.minute
@@ -253,7 +256,7 @@ async def health_server():
                 "posted_total": len(posted_news),
                 "posted_today": DAILY_POST_COUNTER,
                 "max_daily": MAX_DAILY_POSTS,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "version": "7.6 с приоритетом картинок из новостей"
             }, ensure_ascii=False),
             content_type='application/json'
@@ -283,7 +286,8 @@ async def enhanced_keep_alive():
                 async with aiohttp.ClientSession() as session:
                     async with session.get(f'http://localhost:{PORT}/health', timeout=10) as resp:
                         if resp.status == 200:
-                            print(f"✅ Внутренний ping: {datetime.now().strftime('%H:%M:%S')}")
+                            moscow_time = get_moscow_time()
+                            print(f"✅ Внутренний ping: {moscow_time.strftime('%H:%M:%S')}")
             except Exception as e:
                 print(f"⚠️ Ошибка внутреннего ping: {e}")
             
@@ -294,7 +298,8 @@ async def enhanced_keep_alive():
                         random_param = f"?ping={random.randint(1000,9999)}"
                         async with session.get(f'{RENDER_APP_URL}/health{random_param}', timeout=30) as resp:
                             if resp.status == 200:
-                                print(f"🌐 ВНЕШНИЙ PING УСПЕШЕН: {datetime.now().strftime('%H:%M:%S')}")
+                                moscow_time = get_moscow_time()
+                                print(f"🌐 ВНЕШНИЙ PING УСПЕШЕН: {moscow_time.strftime('%H:%M:%S')}")
                 except Exception as e:
                     print(f"⚠️ Ошибка внешнего ping: {e}")
             
@@ -308,8 +313,7 @@ async def enhanced_keep_alive():
                         print(f"⚠️ Ошибка случайного постинга: {e}")
             else:
                 if not is_posting_time():
-                    current_utc = datetime.utcnow()
-                    moscow_time = current_utc + timedelta(hours=3)
+                    moscow_time = get_moscow_time()
                     print(f"⏰ Запрещенное время: Москва {moscow_time.strftime('%H:%M')}")
                 else:
                     print("📊 Случайный постинг пропущен: лимит")
@@ -496,7 +500,7 @@ def remove_duplicate_text(text):
     
     cleaned_text = '. '.join(unique_sentences) + '.' if unique_sentences else ''
     
-    # Если после очистки текст стал слишком коротким, возвращаем оригинал
+    # Если после очистка текст стал слишком коротким, возвращаем оригинал
     if len(cleaned_text.split()) < 20 and len(text.split()) > 30:
         return text
     
@@ -913,8 +917,7 @@ async def publish_news(count=1):
         return 0
     
     if not is_posting_time():
-        current_utc = datetime.utcnow()
-        moscow_time = current_utc + timedelta(hours=3)
+        moscow_time = get_moscow_time()
         print(f"❌ Сейчас запрещенное время для постинга: Москва {moscow_time.strftime('%H:%M')}")
         return 0
     
@@ -1037,8 +1040,7 @@ async def manual_post(message):
             return
         
         if not is_posting_time():
-            current_utc = datetime.utcnow()
-            moscow_time = current_utc + timedelta(hours=3)
+            moscow_time = get_moscow_time()
             await bot.reply_to(message, f"❌ Сейчас запрещенное время для постинга: Москва {moscow_time.strftime('%H:%M')}")
             return
             
@@ -1051,8 +1053,7 @@ async def manual_post(message):
 
 @bot.message_handler(commands=['status'])
 async def bot_status(message):
-    current_utc = datetime.utcnow()
-    moscow_time = current_utc + timedelta(hours=3)
+    moscow_time = get_moscow_time()
     
     placeholder_status = "✅ В папке static" if (DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH)) else "❌ НЕ НАЙДЕНА - КРИТИЧЕСКАЯ ОШИБКА"
     
@@ -1114,8 +1115,7 @@ async def show_sources(message):
 async def show_limits(message):
     """Показать текущие лимиты и временные ограничения"""
     reset_daily_counter_if_needed()
-    current_utc = datetime.utcnow()
-    moscow_time = current_utc + timedelta(hours=3)
+    moscow_time = get_moscow_time()
     
     limits_text = f"""
 📋 Лимиты и ограничения:
@@ -1155,8 +1155,7 @@ async def auto_poster():
                 await publish_news(news_count)
             else:
                 if not is_posting_time():
-                    current_utc = datetime.utcnow()
-                    moscow_time = current_utc + timedelta(hours=3)
+                    moscow_time = get_moscow_time()
                     print(f"💤 Запрещенное время: Москва {moscow_time.strftime('%H:%M')}, автопостинг приостановлен")
                 else:
                     print(f"📊 Достигнут лимит: {DAILY_POST_COUNTER}/{MAX_DAILY_POSTS}")
