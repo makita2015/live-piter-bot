@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# bot.py - Новостной бот для канала "Live Питер 📸" с защитой от дублирования
+# bot.py - Новостной бот для канала "Live Питер 📸" с приоритетом картинок из новостей
 import os
 import time
 import json
@@ -66,13 +66,14 @@ def initialize_placeholder():
         # Проверяем существование заглушки в папке static
         if os.path.exists(DEFAULT_PLACEHOLDER_PATH):
             print("✅ Заглушка найдена в папке static")
+            return True
         else:
-            print("❌ Заглушка НЕ найдена в папке static")
+            print("❌ КРИТИЧЕСКАЯ ОШИБКА: Заглушка НЕ найдена в папке static")
             print("💡 Разместите файл placeholder.jpg в папке static")
-            DEFAULT_PLACEHOLDER_PATH = None
+            return False
     except Exception as e:
         print(f"❌ Ошибка инициализации заглушки: {e}")
-        DEFAULT_PLACEHOLDER_PATH = None
+        return False
 
 # --- Управление опубликованными новостями ---
 def load_posted_news():
@@ -253,7 +254,7 @@ async def health_server():
                 "posted_today": DAILY_POST_COUNTER,
                 "max_daily": MAX_DAILY_POSTS,
                 "timestamp": datetime.now().isoformat(),
-                "version": "7.4 с системой заглушек из static"
+                "version": "7.6 с приоритетом картинок из новостей"
             }, ensure_ascii=False),
             content_type='application/json'
         )
@@ -618,7 +619,7 @@ NEWS_SOURCES = [
     "https://www.kommersant.ru/RSS/news.xml",
 ]
 
-# --- Функции работы с новостями ---
+# --- Функции работы с изображениями ---
 def extract_image_from_item(item_soup):
     """Извлечение изображения из RSS элемента"""
     image_sources = [
@@ -676,16 +677,19 @@ async def download_image(session, url):
                     filename = f"./temp_image_{int(time.time())}_{random.randint(1000, 9999)}.jpg"
                     content = await response.read()
                     
-                    if len(content) > 10240:
+                    if len(content) > 10240:  # Минимум 10KB
                         with open(filename, 'wb') as f:
                             f.write(content)
                         return filename
+                    else:
+                        print(f"⚠️ Изображение слишком маленькое: {len(content)} байт")
                 
     except Exception as e:
         print(f"⚠️ Ошибка скачивания изображения {url}: {e}")
     
     return None
 
+# --- Функции работы с новостями ---
 async def get_news_from_source(session, source_url, limit=5):
     """Получение новостей из одного источника"""
     try:
@@ -721,6 +725,7 @@ async def get_news_from_source(session, source_url, limit=5):
                     if not title or not link:
                         continue
                     
+                    # Ищем изображение в RSS
                     image_url = extract_image_from_item(item)
                     
                     # Если изображения нет в RSS, ищем на странице
@@ -791,7 +796,7 @@ async def get_extended_news_text(link, title, session):
     return ""
 
 async def prepare_news_item(item):
-    """Подготовка новости к публикации"""
+    """Подготовка новости к публикации - ПРИОРИТЕТ КАРТИНКЕ ИЗ НОВОСТИ"""
     title = item.get('title', 'Без заголовка')
     link = item.get('link', '')
     description = item.get('description', '')
@@ -816,15 +821,18 @@ async def prepare_news_item(item):
     
     print(f"✅ Текст подготовлен: {word_count} слов")
     
-    # Работа с изображением
+    # Работа с изображением - ПРИОРИТЕТ КАРТИНКЕ ИЗ НОВОСТИ
     image_path = None
     
     # Сначала пробуем скачать изображение из новости
     if image_url:
+        print(f"🖼️ Пытаемся скачать изображение из новости: {image_url}")
         async with aiohttp.ClientSession() as session:
             image_path = await download_image(session, image_url)
             if image_path:
                 print("✅ Используем изображение из новости")
+            else:
+                print("⚠️ Не удалось скачать изображение из новости")
     
     # Если нет изображения из новости - используем заглушку из static
     if not image_path:
@@ -832,14 +840,16 @@ async def prepare_news_item(item):
             image_path = DEFAULT_PLACEHOLDER_PATH
             print("✅ Используем заглушку из папки static")
         else:
-            print("⚠️ Заглушка не найдена в папке static, отправляем без изображения")
+            print("❌ Нет ни изображения новости, ни заглушки!")
+            return None
     
     return {
         'title': title,
         'summary': final_text,
         'link': link,
         'image_path': image_path,
-        'word_count': word_count
+        'word_count': word_count,
+        'is_placeholder': image_path == DEFAULT_PLACEHOLDER_PATH
     }
 
 async def send_news_to_channel(news_item):
@@ -849,14 +859,15 @@ async def send_news_to_channel(news_item):
         summary = news_item['summary']
         image_path = news_item['image_path']
         word_count = news_item['word_count']
+        is_placeholder = news_item.get('is_placeholder', False)
         
-        print(f"📤 Отправка новости: {title[:50]}...")
+        image_type = "заглушку" if is_placeholder else "изображение из новости"
+        print(f"📤 Отправка новости: {title[:50]}... ({image_type})")
         
         # Форматируем сообщение
         message_text = summary
         
         if image_path and os.path.exists(image_path):
-            print(f"🖼️ Используем изображение: {image_path}")
             try:
                 with open(image_path, 'rb') as photo:
                     await bot.send_photo(
@@ -865,7 +876,7 @@ async def send_news_to_channel(news_item):
                         caption=message_text,
                         parse_mode='HTML'
                     )
-                print("✅ Новость с изображением отправлена")
+                print(f"✅ Новость с {image_type} отправлена")
                 
                 # Удаляем временные файлы (кроме заглушки из static)
                 if 'temp_image_' in image_path:
@@ -875,24 +886,13 @@ async def send_news_to_channel(news_item):
                     except Exception as e:
                         print(f"⚠️ Не удалось удалить временный файл: {e}")
                         
+                return True
             except Exception as e:
                 print(f"❌ Ошибка отправки с изображением: {e}")
-                # Fallback: отправляем только текст
-                await bot.send_message(
-                    CHANNEL_ID,
-                    message_text,
-                    parse_mode='HTML'
-                )
+                return False
         else:
-            print("ℹ️ Изображение не найдено, отправляем только текст")
-            await bot.send_message(
-                CHANNEL_ID,
-                message_text,
-                parse_mode='HTML'
-            )
-        
-        print(f"✅ Опубликовано: {title[:70]}... ({word_count} слов)")
-        return True
+            print("❌ Изображение не найдено, новость не отправлена")
+            return False
         
     except Exception as e:
         print(f"❌ Ошибка отправки новости: {e}")
@@ -901,6 +901,11 @@ async def send_news_to_channel(news_item):
 async def publish_news(count=1):
     """Публикация указанного количества новостей"""
     print(f"🚀 Запуск публикации {count} новостей...")
+    
+    # Проверяем наличие заглушки
+    if not (DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH)):
+        print("❌ КРИТИЧЕСКАЯ ОШИБКА: Заглушка не найдена! Публикация невозможна.")
+        return 0
     
     # Проверяем лимиты и время
     if not can_post_more_today():
@@ -974,7 +979,7 @@ async def publish_news(count=1):
 async def send_welcome(message):
     welcome_text = """
 🤖 Новостной бот для канала "Live Питер 📸"
-ВЕРСИЯ 7.4 С СИСТЕМОЙ ЗАГЛУШЕК ИЗ STATIC
+ВЕРСИЯ 7.6 С ПРИОРИТЕТОМ КАРТИНОК ИЗ НОВОСТЕЙ
 
 📰 Источники:
 • 3 федеральных новостных портала
@@ -984,7 +989,8 @@ async def send_welcome(message):
 🎯 Особенности:
 • Компактные новости (2-3 абзаца)
 • УЛУЧШЕННАЯ очистка от дублирующихся заголовков
-• Заглушка из папки static при отсутствии изображения
+• ПРИОРИТЕТ картинкам из новостей
+• Заглушка из static как резервный вариант
 • Защита от множественных запусков
 • Улучшенный keep-alive для Render
 • Автопостинг с временными ограничениями
@@ -1003,6 +1009,11 @@ async def send_welcome(message):
 async def force_wake(message):
     """Принудительная активация бота"""
     try:
+        # Проверяем наличие заглушки
+        if not (DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH)):
+            await bot.reply_to(message, "❌ Заглушка не найдена! Разместите placeholder.jpg в папке static.")
+            return
+            
         await bot.reply_to(message, "🔔 Активирую бота...")
         published = await publish_news(1)
         if published > 0:
@@ -1015,6 +1026,11 @@ async def force_wake(message):
 @bot.message_handler(commands=['post'])
 async def manual_post(message):
     try:
+        # Проверяем наличие заглушки
+        if not (DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH)):
+            await bot.reply_to(message, "❌ Заглушка не найдена! Разместите placeholder.jpg в папке static.")
+            return
+            
         # Проверяем лимиты перед публикацией
         if not can_post_more_today():
             await bot.reply_to(message, f"❌ Достигнут дневной лимит: {DAILY_POST_COUNTER}/{MAX_DAILY_POSTS}")
@@ -1038,10 +1054,10 @@ async def bot_status(message):
     current_utc = datetime.utcnow()
     moscow_time = current_utc + timedelta(hours=3)
     
-    placeholder_status = "✅ В папке static" if (DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH)) else "❌ Не найдена"
+    placeholder_status = "✅ В папке static" if (DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH)) else "❌ НЕ НАЙДЕНА - КРИТИЧЕСКАЯ ОШИБКА"
     
     status_text = f"""
-📊 Статус бота (ВЕРСИЯ 7.4):
+📊 Статус бота (ВЕРСИЯ 7.6):
 
 🤖 Бот: Активен с защитой от дублирования
 📰 Источников: {len(NEWS_SOURCES)}
@@ -1055,6 +1071,7 @@ async def bot_status(message):
 ⏰ Время постинга: 07:00-23:50 (МСК)
 🕒 Текущее время: {moscow_time.strftime('%H:%M')} МСК
 🧹 Очистка дубликатов: ✅ УЛУЧШЕННАЯ
+💡 Режим: ПРИОРИТЕТ картинкам из новостей
 """
     await bot.reply_to(message, status_text)
 
@@ -1065,6 +1082,7 @@ async def bot_stats(message):
 
 📊 Всего новостей: {len(posted_news)}
 📊 Сегодня: {DAILY_POST_COUNTER}/{MAX_DAILY_POSTS}
+🖼️ Заглушка: {'✅ Доступна' if (DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH)) else '❌ ОТСУТСТВУЕТ'}
 🔗 Источники ({len(NEWS_SOURCES)}):
 """
     for source in NEWS_SOURCES:
@@ -1107,14 +1125,14 @@ async def show_limits(message):
 🕒 Текущее время: {moscow_time.strftime('%H:%M')} МСК
 🕒 Сейчас можно постить: {'✅ ДА' if is_posting_time() else '❌ НЕТ'}
 📈 Можно опубликовать сегодня: {MAX_DAILY_POSTS - DAILY_POST_COUNTER}
-🖼️ Заглушка: {'✅ Доступна' if (DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH)) else '❌ Отсутствует'}
+🖼️ Заглушка: {'✅ Доступна' if (DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH)) else '❌ ОТСУТСТВУЕТ - ПУБЛИКАЦИЯ НЕВОЗМОЖНА'}
 
 💡 Примечания:
 • Лимит сбрасывается в 00:00 по Москве
 • Время 23:50-07:00 - перерыв для пользователей
 • Максимум {MAX_DAILY_POSTS} постов в сутки
 • УЛУЧШЕННАЯ очистка от дублирующихся заголовков
-• Заглушка берется из папки static/placeholder.jpg
+• ПРИОРИТЕТ картинкам из новостей, заглушка как резерв
 """
     await bot.reply_to(message, limits_text)
 
@@ -1124,6 +1142,12 @@ async def auto_poster():
     
     while True:
         try:
+            # Проверяем наличие заглушки
+            if not (DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH)):
+                print("❌ КРИТИЧЕСКАЯ ОШИБКА: Заглушка не найдена! Автопостинг приостановлен.")
+                await asyncio.sleep(3600)  # Ждем час перед повторной проверкой
+                continue
+            
             # Проверяем можно ли постить
             if is_posting_time() and can_post_more_today():
                 news_count = random.randint(1, 2)
@@ -1148,26 +1172,25 @@ async def auto_poster():
 
 async def main():
     """Основная функция запуска бота"""
-    print("🚀 Запуск новостного бота 'Live Питер 📸' ВЕРСИЯ 7.4...")
+    print("🚀 Запуск новостного бота 'Live Питер 📸' ВЕРСИЯ 7.6...")
     print(f"📰 Источников: {len(NEWS_SOURCES)}")
     print(f"🎯 Формат: компактные новости (2-3 абзаца)")
     print(f"⏰ Keep-alive: каждые 8-10 минут")
     print(f"🌐 Внешний URL: {RENDER_APP_URL or 'Не установлен'}")
     print(f"📺 Канал: {CHANNEL_ID}")
-    print(f"🖼️ Система заглушек: ИЗ ПАПКИ STATIC")
+    print(f"🖼️ Система изображений: ПРИОРИТЕТ КАРТИНКАМ ИЗ НОВОСТЕЙ")
     print(f"🔒 Защита от дублирования: ✅ АКТИВНА")
     print(f"📊 Дневной лимит: {MAX_DAILY_POSTS} постов")
     print(f"⏰ Время постинга: 07:00-23:50 (МСК)")
     print(f"🧹 Очистка дубликатов: ✅ УЛУЧШЕННАЯ")
     
     # Инициализируем заглушку
-    initialize_placeholder()
+    placeholder_available = initialize_placeholder()
     
-    # Проверяем наличие заглушки
-    if not (DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH)):
-        print("⚠️ ВНИМАНИЕ: Заглушка не найдена в папке static!")
+    if not placeholder_available:
+        print("❌ КРИТИЧЕСКАЯ ОШИБКА: Заглушка не найдена!")
         print("💡 Разместите файл placeholder.jpg в папке static")
-        print("ℹ️ Будет использоваться режим без изображений")
+        print("🚫 Бот запущен, но публикация невозможна без заглушки")
     
     # Запускаем HTTP сервер для здоровья
     health_runner = await health_server()
