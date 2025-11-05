@@ -41,7 +41,7 @@ load_dotenv()
 
 # --- Конфигурация ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHANNEL_ID = os.getenv("CHANNEL_ID", "@veNews")
+CHANNEL_ID = os.getenv("CHANNEL_ID", "@LivePiter")
 AUTO_POST_INTERVAL = int(os.getenv("AUTO_POST_INTERVAL", "1800"))
 PORT = int(os.getenv("PORT", "10000"))
 RENDER_APP_URL = os.getenv("RENDER_APP_URL", "")
@@ -58,76 +58,18 @@ DAILY_POST_COUNTER = 0
 LAST_RESET_DATE = datetime.now().date()
 MAX_DAILY_POSTS = 20
 
-# --- Функция создания заглушки ---
-def generate_beautiful_placeholder():
-    """Создание заглушки в стиле Live Питер"""
-    try:
-        from PIL import Image, ImageDraw, ImageFont
-        
-        # Размеры как на фото 2
-        width, height = 800, 450
-        
-        # Создаем изображение с темно-синим фоном
-        img = Image.new('RGB', (width, height), color='#0a1931')
-        draw = ImageDraw.Draw(img)
-        
-        # Красные полосы сверху и снизу
-        red_strip_height = 60
-        draw.rectangle([0, 0, width, red_strip_height], fill='#8B0000')
-        draw.rectangle([0, height - red_strip_height, width, height], fill='#8B0000')
-        
-        # Основной контент
-        try:
-            font_large = ImageFont.load_default()
-            font_medium = ImageFont.load_default()
-            font_small = ImageFont.load_default()
-        except:
-            font_large = ImageFont.load_default()
-            font_medium = ImageFont.load_default()
-            font_small = ImageFont.load_default()
-        
-        # Текст "Live Питер" - БЕЛЫЙ, крупный, по центру (английские символы)
-        live_piter_text = "Live Piter"
-        draw.text((400, 200), live_piter_text, fill='#FFFFFF', font=font_large, anchor='mm')
-        
-        # Текст "НОВОСТНОЙ КАНАЛ" - ЗОЛОТОЙ, под основным текстом (английские символы)
-        news_channel_text = "NEWS CHANNEL"
-        draw.text((400, 250), news_channel_text, fill='#d4af37', font=font_medium, anchor='mm')
-        
-        # Бегущая строка в нижней красной полосе - БЕЛАЯ (английские символы)
-        ticker_text = "SAINT-PETERSBURG • BREAKING NEWS"
-        draw.text((400, height - 30), ticker_text, fill='#FFFFFF', font=font_small, anchor='mm')
-        
-        # Простая рамка
-        draw.rectangle([10, 10, width-10, height-10], outline='#d4af37', width=2)
-        
-        # Сохраняем
-        placeholder_path = './static/placeholder.jpg'
-        img.save(placeholder_path, quality=95)
-        
-        print(f"🎨 Заглушка создана: {placeholder_path}")
-        return placeholder_path
-        
-    except Exception as e:
-        print(f"⚠️ Ошибка создания заглушки: {e}")
-        return None
-
+# --- Управление заглушкой ---
 def initialize_placeholder():
-    """Инициализация заглушки при запуске"""
+    """Инициализация заглушки из папки static"""
     global DEFAULT_PLACEHOLDER_PATH
     try:
-        # Если заглушка не существует, создаем ее
-        if not os.path.exists(DEFAULT_PLACEHOLDER_PATH):
-            print("🖼️ Заглушка не найдена, создаем...")
-            new_path = generate_beautiful_placeholder()
-            if new_path and os.path.exists(new_path):
-                DEFAULT_PLACEHOLDER_PATH = new_path
-                print("✅ Заглушка создана и инициализирована")
-            else:
-                print("❌ Не удалось создать заглушку, используем режим без изображений")
-                DEFAULT_PLACEHOLDER_PATH = None
+        # Проверяем существование заглушки в папке static
+        if os.path.exists(DEFAULT_PLACEHOLDER_PATH):
+            print("✅ Заглушка найдена в папке static")
         else:
-            print("✅ Заглушка уже существует в папке static")
+            print("❌ Заглушка НЕ найдена в папке static")
+            print("💡 Разместите файл placeholder.jpg в папке static")
+            DEFAULT_PLACEHOLDER_PATH = None
     except Exception as e:
         print(f"❌ Ошибка инициализации заглушки: {e}")
         DEFAULT_PLACEHOLDER_PATH = None
@@ -311,7 +253,7 @@ async def health_server():
                 "posted_today": DAILY_POST_COUNTER,
                 "max_daily": MAX_DAILY_POSTS,
                 "timestamp": datetime.now().isoformat(),
-                "version": "7.3 с исправленными ошибками"
+                "version": "7.4 с системой заглушек из static"
             }, ensure_ascii=False),
             content_type='application/json'
         )
@@ -888,9 +830,9 @@ async def prepare_news_item(item):
     if not image_path:
         if DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH):
             image_path = DEFAULT_PLACEHOLDER_PATH
-            print("✅ Используем заглушку из папке static")
+            print("✅ Используем заглушку из папки static")
         else:
-            print("⚠️ Заглушка не найдена, отправляем без изображения")
+            print("⚠️ Заглушка не найдена в папке static, отправляем без изображения")
     
     return {
         'title': title,
@@ -1032,7 +974,7 @@ async def publish_news(count=1):
 async def send_welcome(message):
     welcome_text = """
 🤖 Новостной бот для канала "Live Питер 📸"
-ВЕРСИЯ 7.3 С ИСПРАВЛЕННЫМИ ОШИБКАМИ
+ВЕРСИЯ 7.4 С СИСТЕМОЙ ЗАГЛУШЕК ИЗ STATIC
 
 📰 Источники:
 • 3 федеральных новостных портала
@@ -1042,7 +984,7 @@ async def send_welcome(message):
 🎯 Особенности:
 • Компактные новости (2-3 абзаца)
 • УЛУЧШЕННАЯ очистка от дублирующихся заголовков
-• Автоматическое создание заглушки
+• Заглушка из папки static при отсутствии изображения
 • Защита от множественных запусков
 • Улучшенный keep-alive для Render
 • Автопостинг с временными ограничениями
@@ -1096,8 +1038,10 @@ async def bot_status(message):
     current_utc = datetime.utcnow()
     moscow_time = current_utc + timedelta(hours=3)
     
+    placeholder_status = "✅ В папке static" if (DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH)) else "❌ Не найдена"
+    
     status_text = f"""
-📊 Статус бота (ВЕРСИЯ 7.3):
+📊 Статус бота (ВЕРСИЯ 7.4):
 
 🤖 Бот: Активен с защитой от дублирования
 📰 Источников: {len(NEWS_SOURCES)}
@@ -1106,7 +1050,7 @@ async def bot_status(message):
 🎯 Формат: Компактные новости (2-3 абзаца)
 ⏰ Keep-alive: каждые 8-10 минут
 🌐 Внешний ping: {'✅ Включен' if RENDER_APP_URL else '❌ Выключен'}
-🖼️ Заглушка: {'✅ В папке static' if DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH) else '❌ Не найдена'}
+🖼️ Заглушка: {placeholder_status}
 🔒 Защита: ✅ Активна
 ⏰ Время постинга: 07:00-23:50 (МСК)
 🕒 Текущее время: {moscow_time.strftime('%H:%M')} МСК
@@ -1163,12 +1107,14 @@ async def show_limits(message):
 🕒 Текущее время: {moscow_time.strftime('%H:%M')} МСК
 🕒 Сейчас можно постить: {'✅ ДА' if is_posting_time() else '❌ НЕТ'}
 📈 Можно опубликовать сегодня: {MAX_DAILY_POSTS - DAILY_POST_COUNTER}
+🖼️ Заглушка: {'✅ Доступна' if (DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH)) else '❌ Отсутствует'}
 
 💡 Примечания:
 • Лимит сбрасывается в 00:00 по Москве
 • Время 23:50-07:00 - перерыв для пользователей
 • Максимум {MAX_DAILY_POSTS} постов в сутки
 • УЛУЧШЕННАЯ очистка от дублирующихся заголовков
+• Заглушка берется из папки static/placeholder.jpg
 """
     await bot.reply_to(message, limits_text)
 
@@ -1202,13 +1148,13 @@ async def auto_poster():
 
 async def main():
     """Основная функция запуска бота"""
-    print("🚀 Запуск новостного бота 'Live Питер 📸' ВЕРСИЯ 7.3...")
+    print("🚀 Запуск новостного бота 'Live Питер 📸' ВЕРСИЯ 7.4...")
     print(f"📰 Источников: {len(NEWS_SOURCES)}")
     print(f"🎯 Формат: компактные новости (2-3 абзаца)")
     print(f"⏰ Keep-alive: каждые 8-10 минут")
     print(f"🌐 Внешний URL: {RENDER_APP_URL or 'Не установлен'}")
     print(f"📺 Канал: {CHANNEL_ID}")
-    print(f"🖼️ Заглушка: {DEFAULT_PLACEHOLDER_PATH}")
+    print(f"🖼️ Система заглушек: ИЗ ПАПКИ STATIC")
     print(f"🔒 Защита от дублирования: ✅ АКТИВНА")
     print(f"📊 Дневной лимит: {MAX_DAILY_POSTS} постов")
     print(f"⏰ Время постинга: 07:00-23:50 (МСК)")
@@ -1220,6 +1166,7 @@ async def main():
     # Проверяем наличие заглушки
     if not (DEFAULT_PLACEHOLDER_PATH and os.path.exists(DEFAULT_PLACEHOLDER_PATH)):
         print("⚠️ ВНИМАНИЕ: Заглушка не найдена в папке static!")
+        print("💡 Разместите файл placeholder.jpg в папке static")
         print("ℹ️ Будет использоваться режим без изображений")
     
     # Запускаем HTTP сервер для здоровья
