@@ -320,8 +320,10 @@ def clean_whitespace(text):
     text = re.sub(r' +', ' ', text)
     # Убираем пробелы в начале и конце строк
     text = re.sub(r'^\s+|\s+$', '', text, flags=re.MULTILINE)
-    # Убираем пробелы перед знаками препинания
-    text = re.sub(r'\s+([.,!?;:])', r'\1', text)
+    # Убираем пробелы перед знаками препинания (кроме точки)
+    text = re.sub(r'\s+([,!?;:])', r'\1', text)
+    # Добавляем пробел после точки, если его нет и если это конец предложения
+    text = re.sub(r'\.(?=\S)', '. ', text)
     # Нормализуем переносы строк
     text = re.sub(r'\n\s*\n', '\n\n', text)
     
@@ -1243,3 +1245,4 @@ if __name__ == "__main__":
         save_daily_stats()
         if instance_socket:
             instance_socket.close()
+
